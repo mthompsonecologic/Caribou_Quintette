@@ -1,0 +1,2501 @@
+---
+title: "Caribou_adehabitat_KDE_HR"
+author: "Mark Thompson"
+date: '2022-05-13'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+h2{ Glencore: Quintette Caribou, Bullmoose and Trend Roman : R Markdown code}
+
+##################################################################
+## Qunitette caribou home range analysis:
+## Prepared for: Glencore and Scott MckNay - Wildlife Infometrics
+## Prepared by: Mark Thompson (MSc, MEd, RPBio),
+## EcoLogic Consultants Ltd.
+## 
+## Annotated RMarkdown
+
+
+```{r include = FALSE, results = "hide"}
+
+##################################################################
+
+if(!require(sp)){install.packages("sp")}
+if(!require(lubridate)){install.packages("lubridate")}
+if(!require(rgdal)){install.packages("rgdal")}
+if(!require(maptools)){install.packages("maptools")}
+if(!require(adehabitatHR)){install.packages("adehabitatHR")}
+if(!require(raster)){install.packages("raster")}
+if(!require(BBMM)){install.packages("BBMM")}
+if(!require(lunar)){install.packages("lunar")}
+if(!require(oce)){install.packages("oce")}
+if(!require(summarytools)){install.packages("summarytools")}
+if(!require(move)){install.packages("move")}
+if(!require(ggplot2)){install.packages("ggplot2")}
+if(!require(sf)){install.packages("sf")}
+if(!require(rgeos)){install.packages("rgeos")}
+if(!require(stringr)){install.packages("stringr")}
+if(!require(dismo)){install.packages("dismo")}
+if(!require(ggmap)){install.packages("ggmap")}
+if(!require(mapproj)){install.packages("mapproj")}
+if(!require(maptools)){install.packages("maptools")}
+if(!require(here)){install.packages("here")}
+if(!require(rcompanion)){install.packages("rcompanion")}
+if(!require(gridExtra)){install.packages("gridExtra")}
+if(!require(RColorBrewer)){install.packages("RColorBrewer")}
+if(!require(furniture)){install.packages("furniture")}
+if(!require(gtable)){install.packages("gtable")}
+
+# Libraries -------------------------------------------------------------------------
+library(raster)
+library(ggplot2)
+library(rgdal)
+library(sp)
+library(sf)
+library(move)
+library(adehabitatHR)
+library(rgeos)
+library(stringr)
+library(dismo)
+library(maptools)
+library(lubridate)
+library(rgdal)
+library(BBMM)
+library(lunar)
+library(oce)
+library(summarytools)
+library(here)
+library(rcompanion)
+library(gridExtra)
+library(RColorBrewer)
+library(furniture)
+library(gtable)
+
+
+#	Load	required	packages
+require(sp)
+require(lubridate)
+require(rgdal)
+require(sf)
+require(stringr)
+require(move)
+
+###################################################################
+
+```
+
+############################################
+
+
+
+```{r Project_Settings, results = "hide"}
+
+#############################################################################
+x = "E" # Easting
+y = "N" # Northing
+## See depreciated: https://inbo.github.io/tutorials/tutorials/spatial_crs_coding/
+crs.proj <- CRS(SRS_string = "EPSG:26910") # For raster formatting
+input.projection = "+init=epsg:26910" # For SpatialDataFrame formatting
+Datecolumn= "Date"
+Timecolumn= "Time"
+timezone = "GMT"
+loc.output <- paste0("adeHRoutput/")
+#############################################################################
+
+```
+
+h1{PART 1 - AdehabitatHR Script for KDE}
+
+This code chunk establishes directory structure, reads in the telemetry data, and puts the timestamp into a common format ("%Y-%m-%d %H:%M:%S") to subset by the timestamp. The date that is used here (>= 2007-11-26) was discovered by visual inspection of the Bullmoose v. Trend Roman data that was being prepared for ddBBMM models. There is little overlap in the sampling intervals prior to the 2007 date.
+
+A subset telemetry file ("Telemetry_QT_v6_MDT.csv") was created from the original shared as "Telemetry_Quintette_All_Final_v5_210806.csv".  Issues with rows >97780 having the entry, "u_Telemetry_Quintette_AdditionalforGapFilling" listed under the heading DataSource. These rows were initially removed, because the timestamp was not initially clear. However, upon further examination timestamp is available for these rows under the headings:
+  "SORTDATE" "sYEAR"	"sMONTH" "sDAY" "Time" "tSORTDATE" "Year" "Month" "Day" "tHOUR" "tMINUTE"
+
+Hence, a separate file is used to import that "u_Telemetry_Quintette_AdditionalforGapFilling" rows under file: "Telemetry_QT_GAP_MDT.csv"
+
+Also note:
+<li>1. Rows 89026-90567 and 91988-95549, 97452-97659 have animal ID as "QU_" or "QU_ None". These are removed later in BRB models.</li>
+<li>2. SORTTIME and DateTime min:sec timestamp is suspect from Rows 1:30 (possibly others?)</li>
+
+```{r Data_Inputs, echo=FALSE, results = "hide"}
+
+Caribou <- read.csv(paste0(here("Input Data"),"/Telemetry_QT_v6_MDT.csv"),	stringsAsFactors=FALSE,	na.strings="NA")
+Caribou$Date <- paste0(substr(Caribou$Date,1,4),"-",substr(Caribou$Date,5,6),"-",substr(Caribou$Date,7,8))
+
+## Date (d) and time (t) vectors
+Caribou_d <- Caribou$Date
+Caribou_t <- paste0(Caribou$Time,":00")
+
+## Put a zero for 00:00:00, where current format is 0:00:00
+## bring it together, put in POSIXct format, and TimeStamp to QU_UHF$timestamp
+Caribou_t <- str_pad(Caribou_t, width = 8, side = "left", "0")
+Caribou_dt <- paste(Caribou_d,Caribou_t)
+Caribou_dt <- as.POSIXct(Caribou_dt, format = "%Y-%m-%d %H:%M:%S", tz = "GMT")
+Caribou$timestamp <- Caribou_dt
+
+## There are single animals with two ID's: e.g., QU_ car188 = Car188.
+## A visual check of the pattern is used to repair the AnimalID's accordingly:
+Caribou$AnimalID <- gsub(pattern = "QU_ c", "C", Caribou$AnimalID)
+Caribou$AnimalID <- gsub(pattern = "c", "C", Caribou$AnimalID)
+
+## Formatting the GAP data to look the same as the other rows to bind the data:
+Caribou_gap <- read.csv(paste0(here("Input Data"),"/Telemetry_QT_GAP_MDT.csv"),	stringsAsFactors=FALSE,	na.strings="NA")
+
+## Date (d) and time (t) vectors
+Caribou_gapd <- Caribou_gap$Date
+Caribou_gapt <- Caribou_gap$Time
+
+Caribou_gapd <- paste0(substr(Caribou_gapd,1,4),"-",substr(Caribou_gapd,5,6),"-",substr(Caribou_gapd,7,8))
+Caribou_gapt <- str_pad(Caribou_gapt, width = 8, side = "left", "0")
+Caribou_gapdt <- paste(Caribou_gapd,Caribou_gapt)
+Caribou_gapdt <- as.POSIXct(Caribou_gapdt, format = "%Y-%m-%d %H:%M:%S", tz = "GMT")
+
+Caribou_gap$KDESEASON <- "NA"
+Caribou_gap$Date <- paste0(substr(Caribou_gap$Date,1,4),"-",substr(Caribou_gap$Date,5,6),"-",substr(Caribou_gap$Date,7,8))
+
+Caribou_gap$timestamp <- Caribou_gapdt
+Caribou_gap$AnimalID <- sub("car", "Car", Caribou_gap$AnimalID)
+
+Caribou <- rbind(Caribou, Caribou_gap)
+
+## Subset to the overlap in timeline >= 2007-11-26
+
+#Caribou <- Caribou[Caribou$timestamp >='2007-11-26 00:00:00',] ## Or skip to table hits by year
+
+```
+
+On Aug 11, 2022 - Scott McNay sent a new excel file ("qttelemfinal6.csv") with cleaner telemetry data. This is the code for processing this into the existing script.
+
+```{r Data_Inputs, echo=FALSE, results = "hide"}
+
+Caribou <- read.csv(paste0(here("Input Data"),"/qttelemfinal6.csv"),	stringsAsFactors=FALSE,	na.strings="NA")
+Caribou$Date <- paste0(substr(Caribou$Date,1,4),"-",substr(Caribou$Date,5,6),"-",substr(Caribou$Date,7,8))
+
+## Put a zero for 00:00:00, where current format is 0:00:00
+## bring it together with package stingr, put in POSIXct format, and TimeStamp to QU_UHF$timestamp
+
+Caribou$sastime <- str_pad(Caribou$sastime, width = 8, side = "left", "0")
+Caribou$timestamp <- paste(Caribou$sasdate, Caribou$sastime)
+Caribou$timestamp <- as.POSIXct(Caribou$timestamp, format = "%d-%b-%y %H:%M:%S", tz = "GMT")
+
+## Change column names for consistency with previous parsing
+names(Caribou)[names(Caribou) == "northing"] <- "N"
+names(Caribou)[names(Caribou) == "easting"] <- "E"
+names(Caribou)[names(Caribou) == "animal_id"] <- "AnimalID"
+
+Caribou <- Caribou[,c(3:6,13,8,10,11)]
+
+```
+
+
+h2{Import the shapefiles of the study areas}
+## (SA) : BM = Bullmoose, TR = Trend Roman, "All" is BM+TR
+
+```{r Study_Areas, echo=FALSE, results = "hide"}
+
+QU_All.shp <- readOGR(paste0(here("Spatial Data"),"/Quintette_Study_Areas_Dataclip.shp"))
+QU_All_SA.shp <- spTransform(QU_All.shp, crs.proj)
+
+QU_BM.shp <- readOGR(paste0(here("Spatial Data"),"/Quintette_Study_Areas_BM_Dataclip.shp"))
+QU_BM_SA.shp <- spTransform(QU_BM.shp, crs.proj)
+
+QU_TR.shp <- readOGR(paste0(here("Spatial Data"),"/Quintette_Study_Areas_TR_Dataclip.shp"))
+QU_TR_SA.shp <- spTransform(QU_TR.shp, crs.proj)
+
+## Clip the data:
+Caribou_sp <- SpatialPointsDataFrame(Caribou[,c("E", "N")], Caribou)
+proj4string(Caribou_sp) <- crs.proj
+
+## By Study Area:
+Caribou_sp <- Caribou_sp[QU_All_SA.shp, ] #All
+Caribou_BM_sp <- Caribou_sp[QU_BM_SA.shp, ] #Bullmoose
+Caribou_TR_sp <- Caribou_sp[QU_TR_SA.shp, ] #Trend Roman
+```
+
+## Animals in study areas - these are animals in the clipped study area
+##
+
+```{r Animals, echo=FALSE, results = "hide"}
+
+## The individual animals that were tagged, set as factor for early coding below:
+Animals <- as.factor(unique(Caribou_sp$AnimalID))
+length(Animals) ## 76 animals: without time reduction (i.e., includes <2007 data)
+
+## The individual animals that were tagged in BM and TR
+Animals_BM <- as.factor(unique(Caribou_BM_sp$AnimalID))
+length(Animals_BM) ## 50 animals: without time reduction
+
+Animals_TR <- as.factor(unique(Caribou_TR_sp$AnimalID))
+length(Animals_TR) ## 28 animals: without time reduction
+
+
+```
+
+The following does not clip animals to the study area. Skip this chunk to keep the data trimmed to the perimeter for mapping purposes only. This chunk of code also determines the maximum extent of the points that are used later for trimming the raster images for movement distance analysis.
+
+
+
+```{r}
+
+Caribou_sp <- SpatialPointsDataFrame(Caribou[,c("E", "N")], Caribou)
+Caribou_sp <- as.data.frame(Caribou_sp)
+Caribou_sp <- Caribou_sp[Caribou_sp$AnimalID %in% Animals, ]
+
+## Outlier removal
+#plot(Caribou_sp)
+#max(Caribou_sp$N)
+#[1] 6236517
+
+## Rounds 2...3
+#plot(Caribou_sp)
+#max(Caribou_sp$N)
+#[1] 6236508 ...6236506...6236496 etc...## remove anything above 6236000
+
+Caribou_sp <- Caribou_sp[!Caribou_sp$N %in% c(6236000:6236517), ] ## Northern outlier removal
+Caribou_sp <- Caribou_sp[,c(1:9)]
+Caribou_sp <- SpatialPointsDataFrame(Caribou_sp[,c("E", "N")], Caribou_sp)
+
+Caribou_BM_sp <- Caribou_sp[Caribou_sp$AnimalID %in% Animals_BM, ] #Bullmoose
+Caribou_TR_sp <- Caribou_sp[Caribou_sp$AnimalID %in% Animals_TR, ] #Trend Roman
+
+## Obtaining maximum extents HEWR
+
+Caribou_sp_TR_WI <- Caribou_sp[which(Caribou_sp$season == "Winter"),]
+Caribou_sp_TR_WI <- Caribou_sp_TR_WI[which(Caribou_sp_TR_WI$areatag == "Roman"),] 
+
+max(Caribou_sp_TR_WI$N)
+max(Caribou_sp_TR_WI$E)
+min(Caribou_sp_TR_WI$N)
+min(Caribou_sp_TR_WI$E)
+
+#> max(Caribou_sp_TR_WI$N)
+#[1] 6110269
+#> max(Caribou_sp_TR_WI$E)
+#[1] 674942.5
+#> min(Caribou_sp_TR_WI$N)
+#[1] 6058931
+#> min(Caribou_sp_TR_WI$E)
+#[1] 585729.5
+
+Caribou_sp_BM_WI <- Caribou_sp[which(Caribou_sp$season == "Winter"),]
+Caribou_sp_BM_WI <- Caribou_sp_BM_WI[which(Caribou_sp_BM_WI$areatag == "Bullmoose"),] 
+
+max(Caribou_sp_BM_WI$N)
+max(Caribou_sp_BM_WI$E)
+min(Caribou_sp_BM_WI$N)
+min(Caribou_sp_BM_WI$E)
+
+#> max(Caribou_sp_BM_WI$N)
+#[1] 6236521
+#> max(Caribou_sp_BM_WI$E)
+#[1] 633400.8
+#> min(Caribou_sp_BM_WI$N)
+#[1] 6056836
+#> min(Caribou_sp_BM_WI$E)
+#[1] 548112.1
+
+
+```
+
+
+###################
+h2{Lag Calculation}
+
+After coding this in, I learned that lag and step can also be calculated using the move package: Section 5 Extracting temporal and spatial information of tracks
+https://cran.r-project.org/web/packages/move/vignettes/move.html
+
+However, these loops produce the same result. They calculate the lag time in minutes between sample intervals
+of the same animal. It puts each animal into a list with the lag time calculated. The first lag entry is marked "NA".
+
+```{r Lag_Calc, echo=FALSE, results = "hide"}
+
+Caribou_BM <- as.data.frame(Caribou_BM_sp)
+Caribou_TR <- as.data.frame(Caribou_TR_sp)
+
+## Order the df's:
+Caribou_BM <- Caribou_BM[order(Caribou_BM$timestamp),]
+Caribou_BM <- Caribou_BM[order(Caribou_BM$AnimalID),]
+
+Caribou_TR <- Caribou_TR[order(Caribou_TR$timestamp),]
+Caribou_TR <- Caribou_TR[order(Caribou_TR$AnimalID),]
+
+## BM
+Animal_BM <- list() ## First loop lists the animals into separate dataframes:
+for(n in 1:length(Animals_BM)){
+  Animal_BM[[n]] <- assign(paste0("Animal_BM",n),data.frame(subset(Caribou_BM, Caribou_BM$AnimalID == Animals_BM[n])))
+  rownames(Animal_BM[[n]]) <- c(1:nrow(Animal_BM[[n]]))
+}
+
+## Second loop calculates lag in the animal list
+for(n in 1:length(Animals_BM)){
+  for(r in 1:nrow(Animal_BM[[n]])){
+    if(rownames(Animal_BM[[n]][r,])==1){
+      Animal_BM[[n]]$lag <- "NA" ## Lag becomes column 12, column 5 is: timestamp
+    }
+    else{
+      Animal_BM[[n]][r,12] <- round(as.numeric(difftime(Animal_BM[[n]][r,5], Animal_BM[[n]][r-1,5], units="mins")),digits=2)}
+  }
+}
+
+## TR
+Animal_TR <- list()
+for(n in 1:length(Animals_TR)){
+  Animal_TR[[n]] <- assign(paste0("Animal_TR",n),data.frame(subset(Caribou_TR, Caribou_TR$AnimalID == as.character(Animals_TR[n]))))
+  rownames(Animal_TR[[n]]) <- c(1:nrow(Animal_TR[[n]]))
+}
+
+for(n in 1:length(Animals_TR)){
+  for(r in 1:nrow(Animal_TR[[n]])){
+    if(rownames(Animal_TR[[n]][r,])==1){
+      Animal_TR[[n]]$lag <- "NA" ## Lag becomes column 12, column 5 is: timestamp
+    }
+    else{
+      Animal_TR[[n]][r,12] <- round(as.numeric(difftime(Animal_TR[[n]][r,5], Animal_TR[[n]][r-1,5], units="mins")),digits=2)}
+  }
+}
+
+```
+
+
+###################
+h2{Step Calculation}
+
+It takes >30 minutes to compute this code chunk. This can be skipped by loading the files in lines 352 and 364 below, but all chunks above and those below prior to the UD calculations need to be re-run to enter into the UD calculations.
+
+```{r Step_calc, echo=FALSE, results = "hide"}
+
+## BM - adding step to column 13:
+BM_points <- st_as_sf(Caribou_BM,
+                      coords = c("E", "N"),
+                      crs = crs.proj)
+
+for(n in 1:length(Animals_BM)){
+  for(r in 1:nrow(Animal_BM[[n]])){
+    if(rownames(Animal_BM[[n]][r,])==1){
+      Animal_BM[[n]]$step <- "NA"
+    }
+    else{
+      Animal_BM[[n]][r,13] <- pointDistance(BM_points[r,], BM_points[r-1,],type='Euclidean')}
+  }
+}
+
+## TR - adding step to column 13:
+TR_points <- st_as_sf(Caribou_TR,
+                      coords = c("E", "N"),
+                      crs = crs.proj)
+
+for(n in 1:length(Animals_TR)){
+  for(r in 1:nrow(Animal_TR[[n]])){
+    if(rownames(Animal_TR[[n]][r,])==1){
+      Animal_TR[[n]]$step <- "NA"
+    }
+    else{
+      Animal_TR[[n]][r,13] <- pointDistance(TR_points[r,], TR_points[r-1,],type='Euclidean')}
+  }
+}
+```
+
+Organizing the lists back into data frames in this next code chunk.
+
+This code chunk resets and trims the data structure after it has been clipped by animals in area, by season, or by animal in the code chunks above. Note that the output will depend on the trimming to perimeter in code chunks above.
+
+The NAs introduced by coercion can be ignored, it is just an artifact from the first lag time set to NA during coercion to a numeric.
+
+```{r Trim_dfs, echo=FALSE, results = "hide"}
+
+##BM
+Caribou_BM <- data.frame()
+Caribou_BM <- do.call("rbind", Animal_BM)
+#Caribou_BM <- Caribou_BM[-which(is.na(Caribou_BM))]
+Caribou_BM$lag <- as.numeric(Caribou_BM$lag)
+Caribou_BM$step <- round(as.numeric(Caribou_BM$step), digits=1)
+Caribou_BM <- Caribou_BM[,c(1:6,12:13)]
+
+write.csv(Caribou_BM,paste0(here(loc.output), "/Caribou_Move_BM.csv"), row.names = FALSE) #Bullmoose
+Caribou_BM <- read.csv(file = paste0(here(loc.output), "/Caribou_Move_BM.csv"))
+names(Caribou_BM)[names(Caribou_BM) == "season"] <- "Season2" ## To check Scott's seasons to the script I wrote.
+
+##TR
+Caribou_TR <- data.frame()
+Caribou_TR <- do.call("rbind", Animal_TR)
+#Caribou_TR <- Caribou_TR[-which(is.na(Caribou_TR))]
+Caribou_TR$lag <- as.numeric(Caribou_TR$lag)
+Caribou_TR$step <- round(as.numeric(Caribou_TR$step), digits=1)
+Caribou_TR <- Caribou_TR[,c(1:6,12:13)]
+
+write.csv(Caribou_TR,paste0(here(loc.output), "/Caribou_Move_TR.csv"), row.names = FALSE) #Bullmoose
+Caribou_TR <- read.csv(file = paste0(here(loc.output), "/Caribou_Move_TR.csv"))
+names(Caribou_TR)[names(Caribou_TR) == "season"] <- "Season2" ## To check Scott's seasons to the script I wrote.
+
+
+## Reduced to:
+print(names(Caribou_TR))
+##[1] "AnimalID" "E" "N" "KDESEASON" "timestamp" "lag" "step"
+
+```
+
+The animals are reset in this chunk after things have been vetted above. Depending on the list or threshold settings above, some animals can be removed. Hence, the reset needs to be performed.
+
+
+```{r Table Animals, echo=FALSE, results = "hide"}
+QU_BM_tbl <- table(Caribou_BM$AnimalID)
+QU_TR_tbl <- table(Caribou_TR$AnimalID)
+
+length(QU_BM_tbl)
+#[1] 50
+length(QU_TR_tbl)
+#[1] 28
+
+Animals_BM <- as.factor(unique(Caribou_BM$AnimalID))
+length(Animals_BM) ## 50 animals
+
+Animals_TR <- as.factor(unique(Caribou_TR$AnimalID))
+length(Animals_TR) ## 28 animals
+
+```
+This code chunk inspects and removes extreme lag times (if needed), organizes the years, and creates an aggregated data set that includes all animals in the density function by year. Aggregated means that the spatial points are not tied to any individual. The individuals are aggregrated into a study area. All spatial points, even if from different animals, are aggregated together as Trend Roman or as Bullmoose.
+
+```{r Trim 2Aggregate, echo=FALSE, results = "hide"}
+
+## Histograms of lag times
+#par(mfrow=c(2,3))
+#hist(Caribou_BM[, 7], breaks = 100, main="CCBS - frequency of lag times", cex.main = 0.8)
+#hist(Caribou_TR[, 7], breaks = 100, main="BKRQ - frequency of lag times", cex.main = 0.8)
+#hist(Caribou_BM[Caribou_BM[,7] < 120, 7], breaks = 20, main="CCBS - frequency of lag times: <120", cex.main = 0.8)
+#hist(Caribou_TR[Caribou_TR[,7] < 120, 7], breaks = 20, main="BKRQ - frequency of lag times: <120", cex.main = 0.8)
+#hist(Caribou_BM[Caribou_BM[,7] > 120 & Caribou_BM[,7] < 600, 7], breaks = 40, main="CCBS - frequency of lag times: range 120-300", cex.main = 0.8)
+#hist(Caribou_TR[Caribou_TR[,7] > 120 & Caribou_TR[,7] < 600, 7], breaks = 40, main="BKRQ - frequency of lag times: range 120-300", cex.main = 0.8)
+
+#tempdf <- as.data.frame(Caribou_TR[Caribou_TR[,7] > 800,])
+#tempdf <- na.omit(tempdf)
+
+## Remove extremes in lag times:
+#Caribou_BM <- subset(Caribou_BM, lag < 120 & lag > 2) # at less than 120 minutes
+#Caribou_TR <- subset(Caribou_TR, lag < 120 & lag > 2)
+
+Caribou_BM <- subset(Caribou_BM, lag > 2) # must be greater than 2 minutes
+Caribou_TR <- subset(Caribou_TR, lag > 2)
+
+Caribou_BM$SA <- "BM"
+Caribou_TR$SA <- "TR"
+
+
+write.csv(rbind(Caribou_BM,Caribou_TR),paste0(here("Input Data"), "/Caribou_noclip.csv"), row.names = FALSE) 
+Caribou_BMTR <- read.csv(paste0(here("Input Data"), "/Caribou_noclip.csv"))
+
+Caribou_BM <- Caribou_BMTR[which(Caribou_BMTR$SA == "BM"),]
+Caribou_TR <- Caribou_BMTR[which(Caribou_BMTR$SA == "TR"),]
+
+
+## The study years:
+Caribou_BM_Yrs <- unique(format(as.Date(Caribou_BM[,5], format="%Y-%m-%d %H:%M:%S"),"%Y"))
+Caribou_TR_Yrs <- unique(format(as.Date(Caribou_TR[,5], format="%Y-%m-%d %H:%M:%S"),"%Y"))
+
+#Bullmoose
+## Creating the aggregated data & animals
+
+Animals_Agg <- c(Animals_BM,Animals_TR)
+length(Animals_Agg) ## 49 animals
+
+## Creating the Aggregrates
+Caribou_BM_Agg <- Caribou_BM
+Caribou_BM_Agg$AnimalID <- "Aggregate"
+Caribou_TR_Agg <- Caribou_TR
+Caribou_TR_Agg$AnimalID <- "Aggregate"
+
+```
+
+## Bullmoose - Aggregated
+
+Create	a	list	of	SpatialPointsDataFrames: By Year
+
+```{r BMAgg_sp, echo=FALSE, include = FALSE, results = "hide"}
+## Aggregated BM
+
+Caribou_BM_Agg_Yrs <- sort(unique(format(as.Date(Caribou_BM[,5], format="%Y-%m-%d %H:%M:%S"),"%Y")))
+Caribou_BM_AgglistYr = list()
+
+## This loop takes the aggregated caribou into a list by year with list elements named by the year:
+for(i in 1:length(Caribou_BM_Agg_Yrs)){
+  Caribou_BM_AgglistYr[[i]] <- data.frame(subset(Caribou_BM_Agg,format.Date(timestamp, "%Y") == Caribou_BM_Agg_Yrs[i]))
+}
+names(Caribou_BM_AgglistYr) <- as.character(Caribou_BM_Agg_Yrs)
+
+# Carry into loop	to create a SpatialPointsDataFrame for each year
+newlistBM_Agg<-list()
+for	(i	in	1:length(Caribou_BM_AgglistYr)){
+  infile	= Caribou_BM_AgglistYr[[i]]
+  infile	= subset(infile,	infile[,2]!="NA")
+  infile	= subset(infile,	infile[,3]!="NA")
+  coordinates(infile) <- c("E","N")
+  proj4string(infile) <- CRS("+init=epsg:26910")
+  name	= paste0("BM_Agg_",names(Caribou_BM_AgglistYr[i]))
+  newlistBM_Agg[[i]] <- infile
+  names(newlistBM_Agg)[i] <- name
+}
+
+## Spatial point data frame
+Caribou_BM_Agg_Yrs_SPDF <- newlistBM_Agg 
+
+#To view plots by year
+#par(mfrow=c(2,2))
+
+#for(i in 1:4){
+#  plot(QU_All_SA.shp,	main=names(Caribou_BM_Agg_Yrs_SPDF[i]))
+#  plot(Caribou_BM_Agg_Yrs_SPDF[[i]], add=TRUE, pch=20)
+#}
+#
+#for(i in 5:8){
+#  plot(QU_All_SA.shp,	main=names(Caribou_BM_Agg_Yrs_SPDF[i]))
+#  plot(Caribou_BM_Agg_Yrs_SPDF[[i]], add=TRUE, pch=20)
+#}
+#
+#for(i in 9:12){
+#  plot(QU_All_SA.shp,	main=names(Caribou_BM_Agg_Yrs_SPDF[i]))
+#  plot(Caribou_BM_Agg_Yrs_SPDF[[i]], add=TRUE, pch=20)
+#}
+#
+#for(i in 13:14){
+#  plot(QU_All_SA.shp,	main=names(Caribou_BM_Agg_Yrs_SPDF[i]))
+#  plot(Caribou_BM_Agg_Yrs_SPDF[[i]], add=TRUE, pch=20)
+#}
+```
+
+## Bullmoose - Animal seasons
+Create	a	list	of	SpatialPointsDataFrames: By Season for the Animal data
+
+Create the seasons
+
+## Six season model:
+1. Early Winter, November 1 – December 31, %Y-11-01 to %Y-12-31
+2. Mid-winter, January 1 – February 28, %Y-01-01 to %Y-02-28
+3. Late winter, March 1 – April 30, %Y-03-01 to %Y-04-30
+4. Calving, May 1 – June 30, %Y-05-01 to %Y-06-30
+5. Summer, July 1 – August 31, %Y-07-01 to %Y-08-31
+6. Rut, September 1 – October 31, %Y-09-01 to %Y-10-31
+
+## Four season model:
+1. Winter, November 1 – April 30, %Y-03-01 to %Y-04-30
+2. Calving, May 1 – June 30, %Y-05-01 to %Y-06-30
+3. Summer, July 1 – August 31, %Y-07-01 to %Y-08-31
+4. Rut, September 1 – October 31, %Y-09-01 to %Y-10-31
+
+## Two Season Model
+1. Winter, November 1 – April 30, %Y-11-01 to %Y-04-30
+2. Summer, May 1 - October 31, %Y-05-01 to %Y-10-31
+
+The data also has to deal with Nov 1-Dec 31 in year-1.This will be handled by putting the Nov 1-Dec 31 section into the year of Jan-1 to end Apr. For example, Nov 1, 2007 until Apr 30 2008 is Winter 2008. The function assign_seasonYR is built to address this.
+
+
+```{r BMAgg_sp, echo=FALSE, include = FALSE, results = "hide"}
+
+years <- unique(format(as.Date(Caribou_BM$timestamp, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),"%Y"))
+Caribou_BM$date <- as.Date(Caribou_BM$timestamp, format = "%Y-%m-%d %H:%M:%S", tz = "GMT")
+Caribou_BM$season <- "season"
+
+## Function to assess if a value is a whole number - to identify leap years below:
+is.wholenumber <- function(x, tol = .Machine$double.eps^0.5) {
+    abs(x - round(x)) < tol
+}
+
+## Sorting with leap years:
+for(i in 1:length(years)){
+   if (!is.wholenumber(as.numeric(years[i]) / 4))
+       {
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-11-01") & Caribou_BM$date <= paste0(years[i],"-12-31"),11] = "EW"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-01-01") & Caribou_BM$date <= paste0(years[i],"-02-28"),11] = "MW"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-03-01") & Caribou_BM$date <= paste0(years[i],"-04-30"),11] = "LW"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-05-01") & Caribou_BM$date <= paste0(years[i],"-06-30"),11] = "CA"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-07-01") & Caribou_BM$date <= paste0(years[i],"-08-31"),11] = "SU"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-09-01") & Caribou_BM$date <= paste0(years[i],"-10-31"),11] = "RU"
+   }
+  else if(!is.wholenumber(as.numeric(years[i]) / 100)){
+      Caribou_BM[Caribou_BM$date >= paste0(years[i],"-11-01") & Caribou_BM$date <= paste0(years[i],"-12-31"),11] = "EW"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-01-01") & Caribou_BM$date <= paste0(years[i],"-02-29"),11] = "MW"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-03-01") & Caribou_BM$date <= paste0(years[i],"-04-30"),11] = "LW"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-05-01") & Caribou_BM$date <= paste0(years[i],"-06-30"),11] = "CA"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-07-01") & Caribou_BM$date <= paste0(years[i],"-08-31"),11] = "SU"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-09-01") & Caribou_BM$date <= paste0(years[i],"-10-31"),11] = "RU"
+  }
+    else if(!is.wholenumber(as.numeric(years[i]) / 400)){
+      Caribou_BM[Caribou_BM$date >= paste0(years[i],"-11-01") & Caribou_BM$date <= paste0(years[i],"-12-31"),11] = "EW"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-01-01") & Caribou_BM$date <= paste0(years[i],"-02-28"),11] = "MW"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-03-01") & Caribou_BM$date <= paste0(years[i],"-04-30"),11] = "LW"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-05-01") & Caribou_BM$date <= paste0(years[i],"-06-30"),11] = "CA"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-07-01") & Caribou_BM$date <= paste0(years[i],"-08-31"),11] = "SU"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-09-01") & Caribou_BM$date <= paste0(years[i],"-10-31"),11] = "RU"
+    }else{
+          Caribou_BM[Caribou_BM$date >= paste0(years[i],"-11-01") & Caribou_BM$date <= paste0(years[i],"-12-31"),11] = "EW"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-01-01") & Caribou_BM$date <= paste0(years[i],"-02-29"),11] = "MW"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-03-01") & Caribou_BM$date <= paste0(years[i],"-04-30"),11] = "LW"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-05-01") & Caribou_BM$date <= paste0(years[i],"-06-30"),11] = "CA"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-07-01") & Caribou_BM$date <= paste0(years[i],"-08-31"),11] = "SU"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-09-01") & Caribou_BM$date <= paste0(years[i],"-10-31"),11] = "RU"  
+    }
+}
+
+assign_seasonYR <- function(d) {
+  ifelse(format(as.Date(d, format = "%Y-%m-%d", tz = "GMT"),"%m") == "11" & format(as.Date(d, format =  "%Y-%m-%d %H:%M:%S", tz = "GMT"),"%d") >= "1", as.numeric(format(as.Date(d, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),"%Y"))+1,
+  ifelse(format(as.Date(d, format =  "%Y-%m-%d", tz = "GMT"),"%m") == "12" & format(as.Date(d, format =  "%Y-%m-%d", tz = "GMT"),"%d") <= "31", as.numeric(format(as.Date(d, format = "%Y-%m-%d", tz = "GMT"),"%Y")), as.numeric(format(as.Date(d, format = "%Y-%m-%d", tz = "GMT"),"%Y"))))
+}
+
+## If the winter season is Nov 1 to Dec 31, then it is the year+1 winter season.
+Caribou_BM$YearSeas = sapply(Caribou_BM$date, assign_seasonYR)
+
+Caribou_BM_Seas <- unique(Caribou_BM$season)
+Caribou_BM_Animal <- unique(Caribou_BM$AnimalID)
+Caribou_BMlistAnimalSeas = list()
+tally = 1
+
+
+## This loop lists the caribou animals into a list by season, named by Animal_season:
+
+for(a in 1:length(Caribou_BM_Animal)){
+  for(i in 1:length(Caribou_BM_Seas)){
+    Caribou_BMlistAnimalSeas[[tally]] <- data.frame(subset(Caribou_BM, season == Caribou_BM_Seas[i] & AnimalID == Caribou_BM_Animal[a]))
+    names(Caribou_BMlistAnimalSeas)[tally] = as.character(paste0(Caribou_BM_Animal[a],"_",as.character(Caribou_BM_Seas[i])))
+    tally = tally + 1
+  }
+}
+
+## Put the list back into a dataframe to subset by season and years
+Caribou_BMAnimal_Seas <- do.call("rbind",Caribou_BMlistAnimalSeas)
+years <- as.numeric(sort(unique(format(as.Date(Caribou_BMAnimal_Seas$date, "%Y-%m-%d"), "%Y"))))
+tally = 1
+Caribou_BMAnimal_SeasYr <- list()
+
+for(s in 1:length(Caribou_BM_Seas)){
+  for(y in 1:length(years)){
+    Caribou_BMAnimal_SeasYr[[tally]] <- Caribou_BMAnimal_Seas[which(Caribou_BMAnimal_Seas$YearSeas == years[y] & Caribou_BMAnimal_Seas$season == Caribou_BM_Seas[s]), ]
+    names(Caribou_BMAnimal_SeasYr)[[tally]] <- paste0("Caribou_BMAnimal_",years[y],Caribou_BM_Seas[s])
+    tally = tally + 1
+  }
+}
+
+Caribou_BMAnimal_SeasYrdf <- do.call(rbind, Caribou_BMAnimal_SeasYr)
+Caribou_BMAnimal_SeasYrdf$year <- format.Date(Caribou_BMAnimal_SeasYrdf$timestamp, format = "%Y")
+rownames(Caribou_BMAnimal_SeasYrdf) = c(1:nrow(Caribou_BMAnimal_SeasYrdf))
+#Caribou_BMAnimal_SeasYrdf <- Caribou_BMAnimal_SeasYrdf[,c(1:3,5:7,9:10)]
+
+## Create a dataframe of Individual, Location, #Points, 2002...2021.
+
+Caribou_BMAnimal_SeasYrdf_EW <- Caribou_BMAnimal_SeasYrdf[which(Caribou_BMAnimal_SeasYrdf$season == "EW"),]
+Caribou_BMAnimal_SeasYrdf_MW <- Caribou_BMAnimal_SeasYrdf[which(Caribou_BMAnimal_SeasYrdf$season == "MW"),]
+Caribou_BMAnimal_SeasYrdf_LW <- Caribou_BMAnimal_SeasYrdf[which(Caribou_BMAnimal_SeasYrdf$season == "LW"),]
+Caribou_BMAnimal_SeasYrdf_CA <- Caribou_BMAnimal_SeasYrdf[which(Caribou_BMAnimal_SeasYrdf$season == "CA"),]
+Caribou_BMAnimal_SeasYrdf_SU <- Caribou_BMAnimal_SeasYrdf[which(Caribou_BMAnimal_SeasYrdf$season == "SU"),]
+Caribou_BMAnimal_SeasYrdf_RU <- Caribou_BMAnimal_SeasYrdf[which(Caribou_BMAnimal_SeasYrdf$season == "RU"),]
+
+BMAnimal_SeasYrdf_EW <- table(Caribou_BMAnimal_SeasYrdf_EW$AnimalID, paste0(Caribou_BMAnimal_SeasYrdf_EW$season,"_CCBS"), Caribou_BMAnimal_SeasYrdf_EW$YearSeas)
+names(dimnames(BMAnimal_SeasYrdf_EW)) <- c("Animal", "Season_loc", "Year")
+ftable(BMAnimal_SeasYrdf_EW) 
+
+BMAnimal_SeasYrdf_MW <- table(Caribou_BMAnimal_SeasYrdf_MW$AnimalID, paste0(Caribou_BMAnimal_SeasYrdf_MW$season,"_CCBS"), Caribou_BMAnimal_SeasYrdf_MW$YearSeas)
+names(dimnames(BMAnimal_SeasYrdf_MW)) <- c("Animal", "Season_loc", "Year")
+ftable(BMAnimal_SeasYrdf_MW) 
+
+BMAnimal_SeasYrdf_LW <- table(Caribou_BMAnimal_SeasYrdf_LW$AnimalID, paste0(Caribou_BMAnimal_SeasYrdf_LW$season,"_CCBS"), Caribou_BMAnimal_SeasYrdf_LW$YearSeas)
+names(dimnames(BMAnimal_SeasYrdf_LW)) <- c("Animal", "Season_loc", "Year")
+ftable(BMAnimal_SeasYrdf_LW) 
+
+BMAnimal_SeasYrdf_CA <- table(Caribou_BMAnimal_SeasYrdf_CA$AnimalID, paste0(Caribou_BMAnimal_SeasYrdf_CA$season,"_CCBS"), Caribou_BMAnimal_SeasYrdf_CA$YearSeas)
+names(dimnames(BMAnimal_SeasYrdf_CA)) <- c("Animal", "Season_loc", "Year")
+ftable(BMAnimal_SeasYrdf_CA) 
+
+BMAnimal_SeasYrdf_SU <- table(Caribou_BMAnimal_SeasYrdf_SU$AnimalID, paste0(Caribou_BMAnimal_SeasYrdf_SU$season,"_CCBS"), Caribou_BMAnimal_SeasYrdf_SU$YearSeas)
+names(dimnames(BMAnimal_SeasYrdf_SU)) <- c("Animal", "Season_loc", "Year")
+ftable(BMAnimal_SeasYrdf_SU) 
+
+BMAnimal_SeasYrdf_RU <- table(Caribou_BMAnimal_SeasYrdf_RU$AnimalID, paste0(Caribou_BMAnimal_SeasYrdf_RU$season,"_CCBS"), Caribou_BMAnimal_SeasYrdf_RU$YearSeas)
+names(dimnames(BMAnimal_SeasYrdf_RU)) <- c("Animal", "Season_loc", "Year")
+ftable(BMAnimal_SeasYrdf_RU) 
+
+
+## A second way of creating contingency tables is using the xtabs() function, which requires the stats package (which is included in R by default, though still load the package using library()).  https://bookdown.org/kdonovan125/ibis_data_analysis_r4/working-with-tables-in-r.html
+#library(stats)
+
+#BMAnimal_SeasYrdf_xEW <- xtabs(~AnimalID+season+year, data=Caribou_BMAnimal_SeasYrdf_EW)
+
+## Simplifying into plots
+ac_li <- list()
+stampc_li <- list()
+tally = 1
+
+for(s in 1:length(Caribou_BM_Seas)){
+  for(y in 1:length(years)){
+    stampc_li[[tally]] <- nrow(Caribou_BMAnimal_SeasYrdf[is.element(Caribou_BMAnimal_SeasYrdf$season, Caribou_BM_Seas[s]) & is.element(Caribou_BMAnimal_SeasYrdf$YearSeas, years[y]),])
+    names(stampc_li)[tally] <- paste0("stampc_",Caribou_BM_Seas[s],"_",years[y])
+    
+    assign("temp",as.data.frame(Caribou_BMAnimal_SeasYrdf[is.element(Caribou_BMAnimal_SeasYrdf$season, Caribou_BM_Seas[s]) & is.element(Caribou_BMAnimal_SeasYrdf$YearSeas, years[y]),]))
+    ac_li[[tally]] <- length(unique(temp$AnimalID))
+    names(ac_li)[tally] <- paste0("ac_",Caribou_BM_Seas[s],"_",years[y])
+    tally = tally + 1
+  }
+}
+
+stampc_lis <- as.data.frame(do.call(rbind,stampc_li))
+ac_lis <- as.data.frame(do.call(rbind,ac_li))
+animalseastat <- cbind(stampc_lis,ac_lis)
+animalseastat$info <- rownames(animalseastat)
+rownames(animalseastat) <- c(1:nrow(animalseastat))
+animalseastat$year <- substr(animalseastat$info,11,14)
+animalseastat$season <- substr(animalseastat$info,8,9)
+animalseastat <- animalseastat[,c(5,4,2,1)]
+names(animalseastat) <- c("season","year","ac","stampc")
+animalseastat$year <- as.Date(ISOdate(animalseastat$year,1,1))
+animalseastat$yeard <- format.Date(ISOdate(animalseastat$year,1,1),format="%Y")
+animalseastat$season <- as.factor(animalseastat$season)
+
+theme_set(theme_classic())
+seacol <- brewer.pal(n = 6, name = "Spectral")
+
+BMap1 = ggplot() + 
+  geom_line(data = animalseastat, aes(color = season, x = year, y = stampc),linetype = "dashed",size=0.1) + 
+  geom_point(data = animalseastat, aes(color = season, x = year, y = stampc),size=2) +
+  scale_colour_manual(values=c(EW=seacol[1],MW=seacol[2],LW=seacol[3],CA=seacol[4],SU=seacol[5],RU=seacol[6])) +
+  scale_x_date(date_labels="%Y",date_breaks  ="1 year") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 6, face="bold")) + labs(title="Telemetry Points Bullmoose", subtitle= "Per Season Across Years", xlab="Dates", ylab="Telemetry Point Counts")
+
+BMap2 = ggplot(animalseastat, aes(x = year, y=ac, fill=season)) + scale_fill_brewer(palette = "Spectral") +
+  scale_x_date(date_labels="%Y",date_breaks  ="1 year") + geom_bar(stat="identity",position="dodge") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 6, face="bold")) + labs(title="Number of Animals Bullmoose", subtitle= "Per Season Across Years",xlab="Count",ylab="Year") 
+  
+#grid.arrange(BMap1, BMap2, nrow = 1)  
+
+BMEWt <- animalseastat[which(animalseastat$season == "EW"),c(5,1,3,4)]
+BMMWt <- animalseastat[which(animalseastat$season == "MW"),c(5,1,3,4)]
+BMLWt <- animalseastat[which(animalseastat$season == "LW"),c(5,1,3,4)]
+BMCAt <- animalseastat[which(animalseastat$season == "CA"),c(5,1,3,4)]
+BMSUt <- animalseastat[which(animalseastat$season == "SU"),c(5,1,3,4)]
+BMRUt <- animalseastat[which(animalseastat$season == "RU"),c(5,1,3,4)]
+
+names(BMEWt) = c("Year","Season","#Animals","#Points")
+names(BMMWt) = c("Year","Season","#Animals","#Points") 
+names(BMLWt) = c("Year","Season","#Animals","#Points")
+names(BMCAt) = c("Year","Season","#Animals","#Points")
+names(BMSUt) = c("Year","Season","#Animals","#Points")
+names(BMRUt) = c("Year","Season","#Animals","#Points")
+
+## Be careful with saving external images within RMarkdown. You need to save directly from within the console. See: https://stackoverflow.com/questions/44336215/error-in-dev-off-cannot-shut-down-device-1-the-null-device, https://stackoverflow.com/questions/45113597/error-unable-to-start-png-device
+
+#ggsave(file=paste0(here("Tables"),"/BMEWt.jpg"),grid.arrange(tableGrob(BMEWt, theme=ttheme_default(),rows=NULL),top="CCBS_EW"))
+#ggsave(file=paste0(here("Tables"),"/BMMWt.jpg"),grid.arrange(tableGrob(BMMWt, theme=ttheme_default(),rows=NULL),top="CCBS_MW"))
+#ggsave(file=paste0(here("Tables"),"/BMLWt.jpg"),grid.arrange(tableGrob(BMLWt, theme=ttheme_default(),rows=NULL),top="CCBS_LW"))
+#ggsave(file=paste0(here("Tables"),"/BMCAt.jpg"),grid.arrange(tableGrob(BMCAt, theme=ttheme_default(),rows=NULL),top="CCBS_CA"))
+#ggsave(file=paste0(here("Tables"),"/BMSUt.jpg"),grid.arrange(tableGrob(BMSUt, theme=ttheme_default(),rows=NULL),top="CCBS_SU"))
+#ggsave(file=paste0(here("Tables"),"/BMRUt.jpg"),grid.arrange(tableGrob(BMRUt, theme=ttheme_default(),rows=NULL),top="CCBS_RU"))
+
+```
+
+## Bullmoose - Aggregated seasons
+Create	a	list	of	SpatialPointsDataFrames: By Season for Aggregated data
+
+Create the seasons
+
+## Six season model:
+1. Early Winter, November 1 – December 31, %Y-11-01 to %Y-12-31
+2. Mid-winter, January 1 – February 28, %Y-01-01 to %Y-02-28
+3. Late winter, March 1 – April 30, %Y-03-01 to %Y-04-30
+4. Calving, May 1 – June 30, %Y-05-01 to %Y-06-30
+5. Summer, July 1 – August 31, %Y-07-01 to %Y-08-31
+6. Rut, September 1 – October 31, %Y-09-01 to %Y-10-31
+
+## Two Season Model
+1. Winter, November 1 – April 30, %Y-11-01 to %Y-04-30
+2. Summer, May 1 - October 31, %Y-05-01 to %Y-10-31
+
+
+```{r BMAgg_sp, echo=FALSE, include = FALSE, results = "hide"}
+
+years <- unique(format(as.Date(Caribou_BM_Agg$timestamp, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),"%Y"))
+Caribou_BM_Agg$date <- as.Date(Caribou_BM_Agg$timestamp, format = "%Y-%m-%d %H:%M:%S", tz = "GMT")
+Caribou_BM_Agg$season <- "season"
+
+is.wholenumber <- function(x, tol = .Machine$double.eps^0.5) {
+    abs(x - round(x)) < tol
+}
+
+## Sorting with leap years:
+for(i in 1:length(years)){
+   if (!is.wholenumber(as.numeric(years[i]) / 4))
+       {
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-11-01") & Caribou_BM_Agg$date <= paste0(years[i],"-12-31"),11] = "EW"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-01-01") & Caribou_BM_Agg$date <= paste0(years[i],"-02-28"),11] = "MW"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-03-01") & Caribou_BM_Agg$date <= paste0(years[i],"-04-30"),11] = "LW"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-05-01") & Caribou_BM_Agg$date <= paste0(years[i],"-06-30"),11] = "CA"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-07-01") & Caribou_BM_Agg$date <= paste0(years[i],"-08-31"),11] = "SU"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-09-01") & Caribou_BM_Agg$date <= paste0(years[i],"-10-31"),11] = "RU"
+   }
+  else if(!is.wholenumber(as.numeric(years[i]) / 100)){
+      Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-11-01") & Caribou_BM_Agg$date <= paste0(years[i],"-12-31"),11] = "EW"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-01-01") & Caribou_BM_Agg$date <= paste0(years[i],"-02-29"),11] = "MW"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-03-01") & Caribou_BM_Agg$date <= paste0(years[i],"-04-30"),11] = "LW"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-05-01") & Caribou_BM_Agg$date <= paste0(years[i],"-06-30"),11] = "CA"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-07-01") & Caribou_BM_Agg$date <= paste0(years[i],"-08-31"),11] = "SU"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-09-01") & Caribou_BM_Agg$date <= paste0(years[i],"-10-31"),11] = "RU"
+  }
+    else if(!is.wholenumber(as.numeric(years[i]) / 400)){
+      Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-11-01") & Caribou_BM_Agg$date <= paste0(years[i],"-12-31"),11] = "EW"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-01-01") & Caribou_BM_Agg$date <= paste0(years[i],"-02-28"),11] = "MW"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-03-01") & Caribou_BM_Agg$date <= paste0(years[i],"-04-30"),11] = "LW"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-05-01") & Caribou_BM_Agg$date <= paste0(years[i],"-06-30"),11] = "CA"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-07-01") & Caribou_BM_Agg$date <= paste0(years[i],"-08-31"),11] = "SU"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-09-01") & Caribou_BM_Agg$date <= paste0(years[i],"-10-31"),11] = "RU"
+    }else{
+          Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-11-01") & Caribou_BM_Agg$date <= paste0(years[i],"-12-31"),11] = "EW"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-01-01") & Caribou_BM_Agg$date <= paste0(years[i],"-02-29"),11] = "MW"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-03-01") & Caribou_BM_Agg$date <= paste0(years[i],"-04-30"),11] = "LW"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-05-01") & Caribou_BM_Agg$date <= paste0(years[i],"-06-30"),11] = "CA"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-07-01") & Caribou_BM_Agg$date <= paste0(years[i],"-08-31"),11] = "SU"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-09-01") & Caribou_BM_Agg$date <= paste0(years[i],"-10-31"),11] = "RU"  
+    }
+}
+
+assign_seasonYR <- function(d) {
+  ifelse(format(as.Date(d, format = "%Y-%m-%d", tz = "GMT"),"%m") == "11" & format(as.Date(d, format =  "%Y-%m-%d", tz = "GMT"),"%d") >= "1", as.numeric(format(as.Date(d, format = "%Y-%m-%d", tz = "GMT"),"%Y"))+1,
+  ifelse(format(as.Date(d, format =  "%Y-%m-%d", tz = "GMT"),"%m") == "12" & format(as.Date(d, format =  "%Y-%m-%d", tz = "GMT"),"%d") <= "31", as.numeric(format(as.Date(d, format = "%Y-%m-%d", tz = "GMT"),"%Y")), as.numeric(format(as.Date(d, format = "%Y-%m-%d", tz = "GMT"),"%Y"))))
+}
+
+## If the winter season is Nov 1 to Dec 31, then it is the year+1 winter season.
+Caribou_BM_Agg$YearSeas = sapply(Caribou_BM_Agg$date, assign_seasonYR)
+
+
+Caribou_BM_Agg_Seas <- c("EW","MW","LW","CA","SU","RU")
+Caribou_BM_Agg_Seas4 <- c("WI","CA","SU","RU")
+Caribou_BM_AgglistSeas = list()
+Caribou_BM_AgglistSeas4 = list()
+
+## This loop lists the aggregated caribou into a list by season, named by season:
+for(i in 1:length(Caribou_BM_Agg_Seas)){
+  Caribou_BM_AgglistSeas[[i]] <- data.frame(subset(Caribou_BM_Agg, season == Caribou_BM_Agg_Seas[i]))
+}
+names(Caribou_BM_AgglistSeas) <- as.character(Caribou_BM_Agg_Seas)
+
+## Four seasons
+
+Caribou_BM_Agg[which(Caribou_BM_Agg$season == "EW" | Caribou_BM_Agg$season == "MW" | Caribou_BM_Agg$season == "LW"),11] <- "WI"
+
+for(i in 1:length(Caribou_BM_Agg_Seas4)){
+  Caribou_BM_AgglistSeas4[[i]] <- data.frame(subset(Caribou_BM_Agg, season == Caribou_BM_Agg_Seas4[i]))
+}
+names(Caribou_BM_AgglistSeas4) <- as.character(Caribou_BM_Agg_Seas4)
+
+```
+
+BM
+Create	a	list	of	SpatialPointsDataFrames: By Season x Year
+
+
+```{r BMAgg_sp, echo=FALSE, include = FALSE, results = "hide"}
+
+## This loop lists the aggregated caribou by season into a list by year, named by season_year:
+
+Caribou_BM_Seas_YrEW <- list() # EW = Early winter
+Caribou_BM_Seas_YrMW <- list() # MW = Mid winter
+Caribou_BM_Seas_YrLW <- list() # LW = Late winter
+Caribou_BM_Seas_YrCA <- list() # CA = Calving
+Caribou_BM_Seas_YrSU <- list() # SU = Summer
+Caribou_BM_Seas_YrRU <- list() # RU = Rutting
+
+for(y in 1:length(Caribou_BM_Agg_Yrs)){
+  
+  if(nrow(data.frame(subset(Caribou_BM_AgglistSeas[[1]],format.Date(timestamp, format = "%Y") == Caribou_BM_Agg_Yrs[y])))  > 0){
+    Caribou_BM_Seas_YrEW[[y]] <- data.frame(subset(Caribou_BM_AgglistSeas[[1]],YearSeas == as.numeric(Caribou_BM_Agg_Yrs[y])))
+    names(Caribou_BM_Seas_YrEW)[y] <- paste0(as.character(Caribou_BM_Agg_Yrs[y]),"_",names(Caribou_BM_AgglistSeas[1]))
+  }else{next}
+  
+  if(nrow(data.frame(subset(Caribou_BM_AgglistSeas[[2]],format.Date(timestamp, format = "%Y") == Caribou_BM_Agg_Yrs[y]))) > 0){
+    Caribou_BM_Seas_YrMW[[y]] <- data.frame(subset(Caribou_BM_AgglistSeas[[2]],YearSeas == as.numeric(Caribou_BM_Agg_Yrs[y])))
+    names(Caribou_BM_Seas_YrMW)[y] <- paste0(as.character(Caribou_BM_Agg_Yrs[[y]]),"_",names(Caribou_BM_AgglistSeas[2]))
+  }else{next}
+  
+  if(nrow(data.frame(subset(Caribou_BM_AgglistSeas[[3]],format.Date(timestamp, format = "%Y") == Caribou_BM_Agg_Yrs[y]))) > 0){
+    Caribou_BM_Seas_YrLW[[y]] <- data.frame(subset(Caribou_BM_AgglistSeas[[3]],YearSeas == as.numeric(Caribou_BM_Agg_Yrs[y])))
+    names(Caribou_BM_Seas_YrLW)[y] <- paste0(as.character(Caribou_BM_Agg_Yrs[y]),"_",names(Caribou_BM_AgglistSeas[3]))
+  }else{next}
+  
+  if(nrow(data.frame(subset(Caribou_BM_AgglistSeas[[4]],format.Date(timestamp, format = "%Y") == Caribou_BM_Agg_Yrs[y]))) > 0){
+    Caribou_BM_Seas_YrCA[[y]] <- data.frame(subset(Caribou_BM_AgglistSeas[[4]],YearSeas == as.numeric(Caribou_BM_Agg_Yrs[y])))
+    names(Caribou_BM_Seas_YrCA)[y] <- paste0(as.character(Caribou_BM_Agg_Yrs[y]),"_",names(Caribou_BM_AgglistSeas[4]))
+  }else{next}
+  
+   if(nrow(data.frame(subset(Caribou_BM_AgglistSeas[[5]],format.Date(timestamp, format = "%Y") == Caribou_BM_Agg_Yrs[y]))) > 0){
+    Caribou_BM_Seas_YrSU[[y]] <- data.frame(subset(Caribou_BM_AgglistSeas[[5]],YearSeas == as.numeric(Caribou_BM_Agg_Yrs[y])))
+    names(Caribou_BM_Seas_YrSU)[y] <- paste0(as.character(Caribou_BM_Agg_Yrs[y]),"_",names(Caribou_BM_AgglistSeas[5]))
+   }else{next}
+  
+  if(nrow(data.frame(subset(Caribou_BM_AgglistSeas[[6]],format.Date(timestamp, format = "%Y") == Caribou_BM_Agg_Yrs[y]))) > 0){
+    Caribou_BM_Seas_YrRU[[y]] <- data.frame(subset(Caribou_BM_AgglistSeas[[6]],YearSeas == as.numeric(Caribou_BM_Agg_Yrs[y])))
+    names(Caribou_BM_Seas_YrRU)[y] <- paste0(as.character(Caribou_BM_Agg_Yrs[y]),"_",names(Caribou_BM_AgglistSeas[6]))
+  }else{next}
+}
+
+## Remove Null years (i.e., no data for that season by year)
+# EW = Early winter, MW = Mid winter, LW = Late winter, CA = Calving, SU = Summer, RU = Rutting
+
+Caribou_BM_Seas_YrEW <- Caribou_BM_Seas_YrEW[!sapply(Caribou_BM_Seas_YrEW,is.null)]
+Caribou_BM_Seas_YrMW <- Caribou_BM_Seas_YrMW[!sapply(Caribou_BM_Seas_YrMW,is.null)]
+Caribou_BM_Seas_YrLW <- Caribou_BM_Seas_YrLW[!sapply(Caribou_BM_Seas_YrLW,is.null)]
+Caribou_BM_Seas_YrCA <- Caribou_BM_Seas_YrCA[!sapply(Caribou_BM_Seas_YrCA,is.null)]
+Caribou_BM_Seas_YrSU <- Caribou_BM_Seas_YrSU[!sapply(Caribou_BM_Seas_YrSU,is.null)]
+Caribou_BM_Seas_YrRU <- Caribou_BM_Seas_YrRU[!sapply(Caribou_BM_Seas_YrRU,is.null)]
+
+# Carry into loop	to create a SpatialPointsDataFrame for each season by year
+
+## EW
+newlistBM_Agg<-list()
+
+for	(i	in	1:length(Caribou_BM_Seas_YrEW)){
+  if(nrow(Caribou_BM_Seas_YrEW[[i]]) > 0){
+  infile	= Caribou_BM_Seas_YrEW[[i]]
+  infile	= subset(infile,	infile[,2]!="NA")
+  infile	= subset(infile,	infile[,3]!="NA")
+  coordinates(infile) <- c("E","N")
+  proj4string(infile) <- CRS("+init=epsg:26910")
+  name	= paste0("BM_Agg_",names(Caribou_BM_Seas_YrEW[i]))
+  newlistBM_Agg[[i]] <- infile
+  names(newlistBM_Agg)[i] <- name
+  }else{next()}
+}
+
+## Spatial point data frame EW
+Caribou_BM_YrEW_SPDF <- newlistBM_Agg 
+
+## MW
+newlistBM_Agg<-list()
+
+for	(i	in	1:length(Caribou_BM_Seas_YrMW)){
+  if(nrow(Caribou_BM_Seas_YrMW[[i]]) > 0){
+  infile	= Caribou_BM_Seas_YrMW[[i]]
+  infile	= subset(infile,	infile[,2]!="NA")
+  infile	= subset(infile,	infile[,3]!="NA")
+  coordinates(infile) <- c("E","N")
+  proj4string(infile) <- CRS("+init=epsg:26910")
+  name	= paste0("BM_Agg_",names(Caribou_BM_Seas_YrMW[i]))
+  newlistBM_Agg[[i]] <- infile
+  names(newlistBM_Agg)[i] <- name
+  }else{next()}
+}
+
+## Spatial point data frame MW
+Caribou_BM_YrMW_SPDF <- newlistBM_Agg 
+
+## LW
+
+newlistBM_Agg<-list()
+
+for	(i	in	1:length(Caribou_BM_Seas_YrLW)){
+  if(nrow(Caribou_BM_Seas_YrLW[[i]]) > 0){
+  infile	= Caribou_BM_Seas_YrLW[[i]]
+  infile	= subset(infile,	infile[,2]!="NA")
+  infile	= subset(infile,	infile[,3]!="NA")
+  coordinates(infile) <- c("E","N")
+  proj4string(infile) <- CRS("+init=epsg:26910")
+  name	= paste0("BM_Agg_",names(Caribou_BM_Seas_YrLW[i]))
+  newlistBM_Agg[[i]] <- infile
+  names(newlistBM_Agg)[i] <- name
+  }else{next()}
+}
+
+## Spatial point data frame LW
+Caribou_BM_YrLW_SPDF <- newlistBM_Agg 
+
+## CA
+newlistBM_Agg<-list()
+
+for	(i	in	1:length(Caribou_BM_Seas_YrCA)){
+  if(nrow(Caribou_BM_Seas_YrCA[[i]]) > 0){
+  infile	= Caribou_BM_Seas_YrCA[[i]]
+  infile	= subset(infile,	infile[,2]!="NA")
+  infile	= subset(infile,	infile[,3]!="NA")
+  coordinates(infile) <- c("E","N")
+  proj4string(infile) <- CRS("+init=epsg:26910")
+  name	= paste0("BM_Agg_",names(Caribou_BM_Seas_YrCA[i]))
+  newlistBM_Agg[[i]] <- infile
+  names(newlistBM_Agg)[i] <- name
+  }else{next()}
+}
+
+## Spatial point data frame CA
+Caribou_BM_YrCA_SPDF <- newlistBM_Agg 
+
+## SU
+newlistBM_Agg<-list()
+
+for	(i	in	1:length(Caribou_BM_Seas_YrSU)){
+  if(nrow(Caribou_BM_Seas_YrSU[[i]]) > 0){
+  infile	= Caribou_BM_Seas_YrSU[[i]]
+  infile	= subset(infile,	infile[,2]!="NA")
+  infile	= subset(infile,	infile[,3]!="NA")
+  coordinates(infile) <- c("E","N")
+  proj4string(infile) <- CRS("+init=epsg:26910")
+  name	= paste0("BM_Agg_",names(Caribou_BM_Seas_YrSU[i]))
+  newlistBM_Agg[[i]] <- infile
+  names(newlistBM_Agg)[i] <- name
+  }else{next()}
+}
+
+## Spatial point data frame SU
+Caribou_BM_YrSU_SPDF <- newlistBM_Agg 
+
+## RU
+newlistBM_Agg<-list()
+
+for	(i	in	1:length(Caribou_BM_Seas_YrRU)){
+  if(nrow(Caribou_BM_Seas_YrRU[[i]]) > 0){
+  infile	= Caribou_BM_Seas_YrRU[[i]]
+  infile	= subset(infile,	infile[,2]!="NA")
+  infile	= subset(infile,	infile[,3]!="NA")
+  coordinates(infile) <- c("E","N")
+  proj4string(infile) <- CRS("+init=epsg:26910")
+  name	= paste0("BM_Agg_",names(Caribou_BM_Seas_YrRU[i]))
+  newlistBM_Agg[[i]] <- infile
+  names(newlistBM_Agg)[i] <- name
+  }else{next()}
+}
+
+
+## Spatial point data frame RU
+Caribou_BM_YrRU_SPDF <- newlistBM_Agg 
+
+
+```
+
+
+BM - The Four Season Model with winter as one.
+Create	a	list	of	SpatialPointsDataFrames: By Season x Year
+
+
+```{r BMAgg_sp, echo=FALSE, include = FALSE, results = "hide"}
+
+## Lists the aggregated caribou by season into a list by year, named by season_year. Only WI is done, because the other seasons were completed in the six season model.
+
+Caribou_BM_Seas_YrWI <- list() # WI = Winter
+
+for(y in 1:length(Caribou_BM_Agg_Yrs)){
+  
+  if(nrow(data.frame(subset(Caribou_BM_AgglistSeas4[[1]],format.Date(timestamp, format = "%Y") == Caribou_BM_Agg_Yrs[y])))  > 0){
+    Caribou_BM_Seas_YrWI[[y]] <- data.frame(subset(Caribou_BM_AgglistSeas4[[1]],YearSeas == as.numeric(Caribou_BM_Agg_Yrs[y])))
+    names(Caribou_BM_Seas_YrWI)[y] <- paste0(as.character(Caribou_BM_Agg_Yrs[y]),"_",names(Caribou_BM_AgglistSeas4[1]))
+  }else{next}
+
+}
+
+## Remove Null years (i.e., no data for that season by year)
+# EW = Early winter, MW = Mid winter, LW = Late winter, CA = Calving, SU = Summer, RU = Rutting
+
+Caribou_BM_Seas_YrWI <- Caribou_BM_Seas_YrWI[!sapply(Caribou_BM_Seas_YrWI,is.null)]
+
+# Carry into loop	to create a SpatialPointsDataFrame for each season by year
+
+## WI
+newlistBM_Agg<-list()
+
+for	(i	in	1:length(Caribou_BM_Seas_YrWI)){
+  if(nrow(Caribou_BM_Seas_YrWI[[i]]) > 0){
+  infile	= Caribou_BM_Seas_YrWI[[i]]
+  infile	= subset(infile,	infile[,2]!="NA")
+  infile	= subset(infile,	infile[,3]!="NA")
+  coordinates(infile) <- c("E","N")
+  proj4string(infile) <- CRS("+init=epsg:26910")
+  name	= paste0("BM_Agg_",names(Caribou_BM_Seas_YrWI[i]))
+  newlistBM_Agg[[i]] <- infile
+  names(newlistBM_Agg)[i] <- name
+  }else{next()}
+}
+
+## Spatial point data frame RU
+Caribou_BM_YrWI_SPDF <- newlistBM_Agg 
+
+```
+
+## Roman- Aggregated
+
+Create	a	list	of	SpatialPointsDataFrames: By Year
+
+```{r TRAgg_sp, echo=FALSE, include = FALSE, results = "hide"}
+## Aggregated TR
+
+Caribou_TR_Agg_Yrs <- sort(unique(format(as.Date(Caribou_TR[,5], format="%Y-%m-%d %H:%M:%S"),"%Y")))
+Caribou_TR_AgglistYr = list()
+
+## This loop takes the aggregated caribou into a list by year with list elements named by the year:
+for(i in 1:length(Caribou_TR_Agg_Yrs)){
+  Caribou_TR_AgglistYr[[i]] <- data.frame(subset(Caribou_TR_Agg,format.Date(timestamp, "%Y") == Caribou_TR_Agg_Yrs[i]))
+}
+names(Caribou_TR_AgglistYr) <- as.character(Caribou_TR_Agg_Yrs)
+
+# Carry into loop	to create a SpatialPointsDataFrame for each year
+newlistTR_Agg<-list()
+for	(i	in	1:length(Caribou_TR_AgglistYr)){
+  infile	= Caribou_TR_AgglistYr[[i]]
+  infile	= subset(infile,	infile[,2]!="NA")
+  infile	= subset(infile,	infile[,3]!="NA")
+  coordinates(infile) <- c("E","N")
+  proj4string(infile) <- CRS("+init=epsg:26910")
+  name	= paste0("TR_Agg_",names(Caribou_TR_AgglistYr[i]))
+  newlistTR_Agg[[i]] <- infile
+  names(newlistTR_Agg)[i] <- name
+}
+
+## Spatial point data frame
+Caribou_TR_Agg_Yrs_SPDF <- newlistTR_Agg 
+
+#To view plots by year
+#par(mfrow=c(2,2))
+
+#for(i in 1:4){
+#  plot(QU_All_SA.shp,	main=names(Caribou_TR_Agg_Yrs_SPDF[i]))
+#  plot(Caribou_TR_Agg_Yrs_SPDF[[i]], add=TRUE, pch=20)
+#}
+#
+#for(i in 5:8){
+#  plot(QU_All_SA.shp,	main=names(Caribou_TR_Agg_Yrs_SPDF[i]))
+#  plot(Caribou_TR_Agg_Yrs_SPDF[[i]], add=TRUE, pch=20)
+#}
+#
+#for(i in 9:12){
+#  plot(QU_All_SA.shp,	main=names(Caribou_TR_Agg_Yrs_SPDF[i]))
+#  plot(Caribou_TR_Agg_Yrs_SPDF[[i]], add=TRUE, pch=20)
+#}
+#
+#for(i in 13:14){
+#  plot(QU_All_SA.shp,	main=names(Caribou_TR_Agg_Yrs_SPDF[i]))
+#  plot(Caribou_TR_Agg_Yrs_SPDF[[i]], add=TRUE, pch=20)
+#}
+```
+
+
+## Trend Roman - Aggregated seasons
+Create	a	list	of	SpatialPointsDataFrames: By Season
+
+
+```{r TRAgg_sp, echo=FALSE, include = FALSE, results = "hide"}
+
+years <- unique(format(as.Date(Caribou_TR$timestamp, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),"%Y"))
+Caribou_TR$date <- as.Date(Caribou_TR$timestamp, format = "%Y-%m-%d %H:%M:%S", tz = "GMT")
+Caribou_TR$season <- "season"
+
+## Function to assess if a value is a whole number - to identify leap years below:
+is.wholenumber <- function(x, tol = .Machine$double.eps^0.5) {
+    abs(x - round(x)) < tol
+}
+
+## Sorting with leap years:
+for(i in 1:length(years)){
+   if (!is.wholenumber(as.numeric(years[i]) / 4))
+       {
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-11-01") & Caribou_TR$date <= paste0(years[i],"-12-31"),11] = "EW"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-01-01") & Caribou_TR$date <= paste0(years[i],"-02-28"),11] = "MW"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-03-01") & Caribou_TR$date <= paste0(years[i],"-04-30"),11] = "LW"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-05-01") & Caribou_TR$date <= paste0(years[i],"-06-30"),11] = "CA"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-07-01") & Caribou_TR$date <= paste0(years[i],"-08-31"),11] = "SU"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-09-01") & Caribou_TR$date <= paste0(years[i],"-10-31"),11] = "RU"
+   }
+  else if(!is.wholenumber(as.numeric(years[i]) / 100)){
+      Caribou_TR[Caribou_TR$date >= paste0(years[i],"-11-01") & Caribou_TR$date <= paste0(years[i],"-12-31"),11] = "EW"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-01-01") & Caribou_TR$date <= paste0(years[i],"-02-29"),11] = "MW"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-03-01") & Caribou_TR$date <= paste0(years[i],"-04-30"),11] = "LW"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-05-01") & Caribou_TR$date <= paste0(years[i],"-06-30"),11] = "CA"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-07-01") & Caribou_TR$date <= paste0(years[i],"-08-31"),11] = "SU"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-09-01") & Caribou_TR$date <= paste0(years[i],"-10-31"),11] = "RU"
+  }
+    else if(!is.wholenumber(as.numeric(years[i]) / 400)){
+      Caribou_TR[Caribou_TR$date >= paste0(years[i],"-11-01") & Caribou_TR$date <= paste0(years[i],"-12-31"),11] = "EW"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-01-01") & Caribou_TR$date <= paste0(years[i],"-02-28"),11] = "MW"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-03-01") & Caribou_TR$date <= paste0(years[i],"-04-30"),11] = "LW"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-05-01") & Caribou_TR$date <= paste0(years[i],"-06-30"),11] = "CA"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-07-01") & Caribou_TR$date <= paste0(years[i],"-08-31"),11] = "SU"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-09-01") & Caribou_TR$date <= paste0(years[i],"-10-31"),11] = "RU"
+    }else{
+          Caribou_TR[Caribou_TR$date >= paste0(years[i],"-11-01") & Caribou_TR$date <= paste0(years[i],"-12-31"),11] = "EW"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-01-01") & Caribou_TR$date <= paste0(years[i],"-02-29"),11] = "MW"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-03-01") & Caribou_TR$date <= paste0(years[i],"-04-30"),11] = "LW"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-05-01") & Caribou_TR$date <= paste0(years[i],"-06-30"),11] = "CA"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-07-01") & Caribou_TR$date <= paste0(years[i],"-08-31"),11] = "SU"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-09-01") & Caribou_TR$date <= paste0(years[i],"-10-31"),11] = "RU"  
+    }
+}
+
+assign_seasonYR <- function(d) {
+  ifelse(format(as.Date(d, format = "%Y-%m-%d", tz = "GMT"),"%m") == "11" & format(as.Date(d, format =  "%Y-%m-%d %H:%M:%S", tz = "GMT"),"%d") >= "1", as.numeric(format(as.Date(d, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),"%Y"))+1,
+  ifelse(format(as.Date(d, format =  "%Y-%m-%d", tz = "GMT"),"%m") == "12" & format(as.Date(d, format =  "%Y-%m-%d", tz = "GMT"),"%d") <= "31", as.numeric(format(as.Date(d, format = "%Y-%m-%d", tz = "GMT"),"%Y")), as.numeric(format(as.Date(d, format = "%Y-%m-%d", tz = "GMT"),"%Y"))))
+}
+
+## If the winter season is Nov 1 to Dec 31, then it is the year+1 winter season.
+Caribou_TR$YearSeas = sapply(Caribou_TR$date, assign_seasonYR)
+
+Caribou_TR_Seas <- unique(Caribou_TR$season)
+Caribou_TR_Animal <- unique(Caribou_TR$AnimalID)
+Caribou_TRlistAnimalSeas = list()
+tally = 1
+
+
+## This loop lists the caribou animals into a list by season, named by Animal_season:
+
+for(a in 1:length(Caribou_TR_Animal)){
+  for(i in 1:length(Caribou_TR_Seas)){
+    Caribou_TRlistAnimalSeas[[tally]] <- data.frame(subset(Caribou_TR, season == Caribou_TR_Seas[i] & AnimalID == Caribou_TR_Animal[a]))
+    names(Caribou_TRlistAnimalSeas)[tally] = as.character(paste0(Caribou_TR_Animal[a],"_",as.character(Caribou_TR_Seas[i])))
+    tally = tally + 1
+  }
+}
+
+## Put the list back into a dataframe to subset by season and years
+Caribou_TRAnimal_Seas <- do.call("rbind",Caribou_TRlistAnimalSeas)
+years <- as.numeric(sort(unique(format(as.Date(Caribou_TRAnimal_Seas$date, "%Y-%m-%d"), "%Y"))))
+tally = 1
+Caribou_TRAnimal_SeasYr <- list()
+
+for(s in 1:length(Caribou_TR_Seas)){
+  for(y in 1:length(years)){
+    Caribou_TRAnimal_SeasYr[[tally]] <- Caribou_TRAnimal_Seas[which(Caribou_TRAnimal_Seas$YearSeas == years[y] & Caribou_TRAnimal_Seas$season == Caribou_TR_Seas[s]), ]
+    names(Caribou_TRAnimal_SeasYr)[[tally]] <- paste0("Caribou_TRAnimal_",years[y],Caribou_TR_Seas[s])
+    tally = tally + 1
+  }
+}
+
+Caribou_TRAnimal_SeasYrdf <- do.call(rbind, Caribou_TRAnimal_SeasYr)
+Caribou_TRAnimal_SeasYrdf$year <- format.Date(Caribou_TRAnimal_SeasYrdf$timestamp, format = "%Y")
+rownames(Caribou_TRAnimal_SeasYrdf) = c(1:nrow(Caribou_TRAnimal_SeasYrdf))
+#Caribou_TRAnimal_SeasYrdf <- Caribou_TRAnimal_SeasYrdf[,c(1:3,5:7,9:10)]
+
+## Create a dataframe of Individual, Location, #Points, 2002...2021.
+
+Caribou_TRAnimal_SeasYrdf_EW <- Caribou_TRAnimal_SeasYrdf[which(Caribou_TRAnimal_SeasYrdf$season == "EW"),]
+Caribou_TRAnimal_SeasYrdf_MW <- Caribou_TRAnimal_SeasYrdf[which(Caribou_TRAnimal_SeasYrdf$season == "MW"),]
+Caribou_TRAnimal_SeasYrdf_LW <- Caribou_TRAnimal_SeasYrdf[which(Caribou_TRAnimal_SeasYrdf$season == "LW"),]
+Caribou_TRAnimal_SeasYrdf_CA <- Caribou_TRAnimal_SeasYrdf[which(Caribou_TRAnimal_SeasYrdf$season == "CA"),]
+Caribou_TRAnimal_SeasYrdf_SU <- Caribou_TRAnimal_SeasYrdf[which(Caribou_TRAnimal_SeasYrdf$season == "SU"),]
+Caribou_TRAnimal_SeasYrdf_RU <- Caribou_TRAnimal_SeasYrdf[which(Caribou_TRAnimal_SeasYrdf$season == "RU"),]
+
+TRAnimal_SeasYrdf_EW <- table(Caribou_TRAnimal_SeasYrdf_EW$AnimalID, paste0(Caribou_TRAnimal_SeasYrdf_EW$season,"_CCBS"), Caribou_TRAnimal_SeasYrdf_EW$YearSeas)
+names(dimnames(TRAnimal_SeasYrdf_EW)) <- c("Animal", "Season_loc", "Year")
+ftable(TRAnimal_SeasYrdf_EW) 
+
+TRAnimal_SeasYrdf_MW <- table(Caribou_TRAnimal_SeasYrdf_MW$AnimalID, paste0(Caribou_TRAnimal_SeasYrdf_MW$season,"_CCBS"), Caribou_TRAnimal_SeasYrdf_MW$YearSeas)
+names(dimnames(TRAnimal_SeasYrdf_MW)) <- c("Animal", "Season_loc", "Year")
+ftable(TRAnimal_SeasYrdf_MW) 
+
+TRAnimal_SeasYrdf_LW <- table(Caribou_TRAnimal_SeasYrdf_LW$AnimalID, paste0(Caribou_TRAnimal_SeasYrdf_LW$season,"_CCBS"), Caribou_TRAnimal_SeasYrdf_LW$YearSeas)
+names(dimnames(TRAnimal_SeasYrdf_LW)) <- c("Animal", "Season_loc", "Year")
+ftable(TRAnimal_SeasYrdf_LW) 
+
+TRAnimal_SeasYrdf_CA <- table(Caribou_TRAnimal_SeasYrdf_CA$AnimalID, paste0(Caribou_TRAnimal_SeasYrdf_CA$season,"_CCBS"), Caribou_TRAnimal_SeasYrdf_CA$YearSeas)
+names(dimnames(TRAnimal_SeasYrdf_CA)) <- c("Animal", "Season_loc", "Year")
+ftable(TRAnimal_SeasYrdf_CA) 
+
+TRAnimal_SeasYrdf_SU <- table(Caribou_TRAnimal_SeasYrdf_SU$AnimalID, paste0(Caribou_TRAnimal_SeasYrdf_SU$season,"_CCBS"), Caribou_TRAnimal_SeasYrdf_SU$YearSeas)
+names(dimnames(TRAnimal_SeasYrdf_SU)) <- c("Animal", "Season_loc", "Year")
+ftable(TRAnimal_SeasYrdf_SU) 
+
+TRAnimal_SeasYrdf_RU <- table(Caribou_TRAnimal_SeasYrdf_RU$AnimalID, paste0(Caribou_TRAnimal_SeasYrdf_RU$season,"_CCBS"), Caribou_TRAnimal_SeasYrdf_RU$YearSeas)
+names(dimnames(TRAnimal_SeasYrdf_RU)) <- c("Animal", "Season_loc", "Year")
+ftable(TRAnimal_SeasYrdf_RU) 
+
+
+## A second way of creating contingency tables is using the xtabs() function, which requires the stats package (which is included in R by default, though still load the package using library()).  https://bookdown.org/kdonovan125/ibis_data_analysis_r4/working-with-tables-in-r.html
+#library(stats)
+
+#TRAnimal_SeasYrdf_xEW <- xtabs(~AnimalID+season+year, data=Caribou_TRAnimal_SeasYrdf_EW)
+
+## Simplifying into plots
+ac_li <- list()
+stampc_li <- list()
+tally = 1
+
+for(s in 1:length(Caribou_TR_Seas)){
+  for(y in 1:length(years)){
+    stampc_li[[tally]] <- nrow(Caribou_TRAnimal_SeasYrdf[is.element(Caribou_TRAnimal_SeasYrdf$season, Caribou_TR_Seas[s]) & is.element(Caribou_TRAnimal_SeasYrdf$YearSeas, years[y]),])
+    names(stampc_li)[tally] <- paste0("stampc_",Caribou_TR_Seas[s],"_",years[y])
+    
+    assign("temp",as.data.frame(Caribou_TRAnimal_SeasYrdf[is.element(Caribou_TRAnimal_SeasYrdf$season, Caribou_TR_Seas[s]) & is.element(Caribou_TRAnimal_SeasYrdf$YearSeas, years[y]),]))
+    ac_li[[tally]] <- length(unique(temp$AnimalID))
+    names(ac_li)[tally] <- paste0("ac_",Caribou_TR_Seas[s],"_",years[y])
+    tally = tally + 1
+  }
+}
+
+stampc_lis <- as.data.frame(do.call(rbind,stampc_li))
+ac_lis <- as.data.frame(do.call(rbind,ac_li))
+animalseastat <- cbind(stampc_lis,ac_lis)
+animalseastat$info <- rownames(animalseastat)
+rownames(animalseastat) <- c(1:nrow(animalseastat))
+animalseastat$year <- substr(animalseastat$info,11,14)
+animalseastat$season <- substr(animalseastat$info,8,9)
+animalseastat <- animalseastat[,c(5,4,2,1)]
+names(animalseastat) <- c("season","year","ac","stampc")
+animalseastat$year <- as.Date(ISOdate(animalseastat$year,1,1))
+animalseastat$yeard <- format.Date(ISOdate(animalseastat$year,1,1),format="%Y")
+animalseastat$season <- as.factor(animalseastat$season)
+
+theme_set(theme_classic())
+seacol <- brewer.pal(n = 6, name = "Spectral")
+
+TRap1 = ggplot() + 
+  geom_line(data = animalseastat, aes(color = season, x = year, y = stampc),linetype = "dashed",size=0.1) + 
+  geom_point(data = animalseastat, aes(color = season, x = year, y = stampc),size=2) +
+  scale_colour_manual(values=c(EW=seacol[1],MW=seacol[2],LW=seacol[3],CA=seacol[4],SU=seacol[5],RU=seacol[6])) +
+  scale_x_date(date_labels="%Y",date_breaks  ="1 year") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 6, face="bold")) + labs(title="Telemetry Points Bullmoose", subtitle= "Per Season Across Years", xlab="Dates", ylab="Telemetry Point Counts")
+
+TRap2 = ggplot(animalseastat, aes(x = year, y=ac, fill=season)) + scale_fill_brewer(palette = "Spectral") +
+  scale_x_date(date_labels="%Y",date_breaks  ="1 year") + geom_bar(stat="identity",position="dodge") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 6, face="bold")) + labs(title="Number of Animals Bullmoose", subtitle= "Per Season Across Years",xlab="Count",ylab="Year") 
+  
+#grid.arrange(TRap1, TRap2, nrow = 1)  
+
+TREWt <- animalseastat[which(animalseastat$season == "EW"),c(5,1,3,4)]
+TRMWt <- animalseastat[which(animalseastat$season == "MW"),c(5,1,3,4)]
+TRLWt <- animalseastat[which(animalseastat$season == "LW"),c(5,1,3,4)]
+TRCAt <- animalseastat[which(animalseastat$season == "CA"),c(5,1,3,4)]
+TRSUt <- animalseastat[which(animalseastat$season == "SU"),c(5,1,3,4)]
+TRRUt <- animalseastat[which(animalseastat$season == "RU"),c(5,1,3,4)]
+
+names(TREWt) = c("Year","Season","#Animals","#Points")
+names(TRMWt) = c("Year","Season","#Animals","#Points") 
+names(TRLWt) = c("Year","Season","#Animals","#Points")
+names(TRCAt) = c("Year","Season","#Animals","#Points")
+names(TRSUt) = c("Year","Season","#Animals","#Points")
+names(TRRUt) = c("Year","Season","#Animals","#Points")
+
+## Be careful with saving external images within RMarkdown. You need to save directly from within the console. See: https://stackoverflow.com/questions/44336215/error-in-dev-off-cannot-shut-down-device-1-the-null-device, https://stackoverflow.com/questions/45113597/error-unable-to-start-png-device
+
+#ggsave(file=paste0(here("Tables"),"/TREWt.jpg"),grid.arrange(tableGrob(TREWt, theme=ttheme_default(),rows=NULL),top="CCBS_EW"))
+#ggsave(file=paste0(here("Tables"),"/TRMWt.jpg"),grid.arrange(tableGrob(TRMWt, theme=ttheme_default(),rows=NULL),top="CCBS_MW"))
+#ggsave(file=paste0(here("Tables"),"/TRLWt.jpg"),grid.arrange(tableGrob(TRLWt, theme=ttheme_default(),rows=NULL),top="CCBS_LW"))
+#ggsave(file=paste0(here("Tables"),"/TRCAt.jpg"),grid.arrange(tableGrob(TRCAt, theme=ttheme_default(),rows=NULL),top="CCBS_CA"))
+#ggsave(file=paste0(here("Tables"),"/TRSUt.jpg"),grid.arrange(tableGrob(TRSUt, theme=ttheme_default(),rows=NULL),top="CCBS_SU"))
+#ggsave(file=paste0(here("Tables"),"/TRRUt.jpg"),grid.arrange(tableGrob(TRRUt, theme=ttheme_default(),rows=NULL),top="CCBS_RU"))
+
+```
+
+## Roman - Aggregated seasons
+Create	a	list	of	SpatialPointsDataFrames: By Season for Aggregated data
+
+Create the seasons
+
+## Six season model:
+1. Early Winter, November 1 – December 31, %Y-11-01 to %Y-12-31
+2. Mid-winter, January 1 – February 28, %Y-01-01 to %Y-02-28
+3. Late winter, March 1 – April 30, %Y-03-01 to %Y-04-30
+4. Calving, May 1 – June 30, %Y-05-01 to %Y-06-30
+5. Summer, July 1 – August 31, %Y-07-01 to %Y-08-31
+6. Rut, September 1 – October 31, %Y-09-01 to %Y-10-31
+
+## Two Season Model
+1. Winter, November 1 – April 30, %Y-11-01 to %Y-04-30
+2. Summer, May 1 - October 31, %Y-05-01 to %Y-10-31
+
+
+```{r TRAgg_sp, echo=FALSE, include = FALSE, results = "hide"}
+
+years <- unique(format(as.Date(Caribou_TR_Agg$timestamp, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),"%Y"))
+Caribou_TR_Agg$date <- as.Date(Caribou_TR_Agg$timestamp, format = "%Y-%m-%d %H:%M:%S", tz = "GMT")
+Caribou_TR_Agg$season <- "season"
+
+is.wholenumber <- function(x, tol = .Machine$double.eps^0.5) {
+    abs(x - round(x)) < tol
+}
+
+## Sorting with leap years:
+for(i in 1:length(years)){
+   if (!is.wholenumber(as.numeric(years[i]) / 4))
+       {
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-11-01") & Caribou_TR_Agg$date <= paste0(years[i],"-12-31"),11] = "EW"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-01-01") & Caribou_TR_Agg$date <= paste0(years[i],"-02-28"),11] = "MW"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-03-01") & Caribou_TR_Agg$date <= paste0(years[i],"-04-30"),11] = "LW"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-05-01") & Caribou_TR_Agg$date <= paste0(years[i],"-06-30"),11] = "CA"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-07-01") & Caribou_TR_Agg$date <= paste0(years[i],"-08-31"),11] = "SU"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-09-01") & Caribou_TR_Agg$date <= paste0(years[i],"-10-31"),11] = "RU"
+   }
+  else if(!is.wholenumber(as.numeric(years[i]) / 100)){
+      Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-11-01") & Caribou_TR_Agg$date <= paste0(years[i],"-12-31"),11] = "EW"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-01-01") & Caribou_TR_Agg$date <= paste0(years[i],"-02-29"),11] = "MW"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-03-01") & Caribou_TR_Agg$date <= paste0(years[i],"-04-30"),11] = "LW"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-05-01") & Caribou_TR_Agg$date <= paste0(years[i],"-06-30"),11] = "CA"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-07-01") & Caribou_TR_Agg$date <= paste0(years[i],"-08-31"),11] = "SU"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-09-01") & Caribou_TR_Agg$date <= paste0(years[i],"-10-31"),11] = "RU"
+  }
+    else if(!is.wholenumber(as.numeric(years[i]) / 400)){
+      Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-11-01") & Caribou_TR_Agg$date <= paste0(years[i],"-12-31"),11] = "EW"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-01-01") & Caribou_TR_Agg$date <= paste0(years[i],"-02-28"),11] = "MW"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-03-01") & Caribou_TR_Agg$date <= paste0(years[i],"-04-30"),11] = "LW"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-05-01") & Caribou_TR_Agg$date <= paste0(years[i],"-06-30"),11] = "CA"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-07-01") & Caribou_TR_Agg$date <= paste0(years[i],"-08-31"),11] = "SU"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-09-01") & Caribou_TR_Agg$date <= paste0(years[i],"-10-31"),11] = "RU"
+    }else{
+          Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-11-01") & Caribou_TR_Agg$date <= paste0(years[i],"-12-31"),11] = "EW"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-01-01") & Caribou_TR_Agg$date <= paste0(years[i],"-02-29"),11] = "MW"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-03-01") & Caribou_TR_Agg$date <= paste0(years[i],"-04-30"),11] = "LW"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-05-01") & Caribou_TR_Agg$date <= paste0(years[i],"-06-30"),11] = "CA"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-07-01") & Caribou_TR_Agg$date <= paste0(years[i],"-08-31"),11] = "SU"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-09-01") & Caribou_TR_Agg$date <= paste0(years[i],"-10-31"),11] = "RU"  
+    }
+}
+
+assign_seasonYR <- function(d) {
+  ifelse(format(as.Date(d, format = "%Y-%m-%d", tz = "GMT"),"%m") == "11" & format(as.Date(d, format =  "%Y-%m-%d", tz = "GMT"),"%d") >= "1", as.numeric(format(as.Date(d, format = "%Y-%m-%d", tz = "GMT"),"%Y"))+1,
+  ifelse(format(as.Date(d, format =  "%Y-%m-%d", tz = "GMT"),"%m") == "12" & format(as.Date(d, format =  "%Y-%m-%d", tz = "GMT"),"%d") <= "31", as.numeric(format(as.Date(d, format = "%Y-%m-%d", tz = "GMT"),"%Y")), as.numeric(format(as.Date(d, format = "%Y-%m-%d", tz = "GMT"),"%Y"))))
+}
+
+## If the winter season is Nov 1 to Dec 31, then it is the year+1 winter season.
+Caribou_TR_Agg$YearSeas = sapply(Caribou_TR_Agg$date, assign_seasonYR)
+
+
+Caribou_TR_Agg_Seas <- c("EW","MW","LW","CA","SU","RU")
+Caribou_TR_Agg_Seas4 <- c("WI","CA","SU","RU")
+Caribou_TR_AgglistSeas = list()
+Caribou_TR_AgglistSeas4 = list()
+
+## This loop lists the aggregated caribou into a list by season, named by season:
+for(i in 1:length(Caribou_TR_Agg_Seas)){
+  Caribou_TR_AgglistSeas[[i]] <- data.frame(subset(Caribou_TR_Agg, season == Caribou_TR_Agg_Seas[i]))
+}
+names(Caribou_TR_AgglistSeas) <- as.character(Caribou_TR_Agg_Seas)
+
+## Four seasons
+
+Caribou_TR_Agg[which(Caribou_TR_Agg$season == "EW" | Caribou_TR_Agg$season == "MW" | Caribou_TR_Agg$season == "LW"),11] <- "WI"
+
+for(i in 1:length(Caribou_TR_Agg_Seas4)){
+  Caribou_TR_AgglistSeas4[[i]] <- data.frame(subset(Caribou_TR_Agg, season == Caribou_TR_Agg_Seas4[i]))
+}
+names(Caribou_TR_AgglistSeas4) <- as.character(Caribou_TR_Agg_Seas4)
+
+```
+
+TR
+Create	a	list	of	SpatialPointsDataFrames: By Season x Year
+
+
+```{r TRAgg_sp, echo=FALSE, include = FALSE, results = "hide"}
+
+## This loop lists the aggregated caribou by season into a list by year, named by season_year:
+
+Caribou_TR_Seas_YrEW <- list() # EW = Early winter
+Caribou_TR_Seas_YrMW <- list() # MW = Mid winter
+Caribou_TR_Seas_YrLW <- list() # LW = Late winter
+Caribou_TR_Seas_YrCA <- list() # CA = Calving
+Caribou_TR_Seas_YrSU <- list() # SU = Summer
+Caribou_TR_Seas_YrRU <- list() # RU = Rutting
+
+for(y in 1:length(Caribou_TR_Agg_Yrs)){
+  
+  if(nrow(data.frame(subset(Caribou_TR_AgglistSeas[[1]],format.Date(timestamp, format = "%Y") == Caribou_TR_Agg_Yrs[y])))  > 0){
+    Caribou_TR_Seas_YrEW[[y]] <- data.frame(subset(Caribou_TR_AgglistSeas[[1]],YearSeas == as.numeric(Caribou_TR_Agg_Yrs[y])))
+    names(Caribou_TR_Seas_YrEW)[y] <- paste0(as.character(Caribou_TR_Agg_Yrs[y]),"_",names(Caribou_TR_AgglistSeas[1]))
+  }else{next}
+  
+  if(nrow(data.frame(subset(Caribou_TR_AgglistSeas[[2]],format.Date(timestamp, format = "%Y") == Caribou_TR_Agg_Yrs[y]))) > 0){
+    Caribou_TR_Seas_YrMW[[y]] <- data.frame(subset(Caribou_TR_AgglistSeas[[2]],YearSeas == as.numeric(Caribou_TR_Agg_Yrs[y])))
+    names(Caribou_TR_Seas_YrMW)[y] <- paste0(as.character(Caribou_TR_Agg_Yrs[[y]]),"_",names(Caribou_TR_AgglistSeas[2]))
+  }else{next}
+  
+  if(nrow(data.frame(subset(Caribou_TR_AgglistSeas[[3]],format.Date(timestamp, format = "%Y") == Caribou_TR_Agg_Yrs[y]))) > 0){
+    Caribou_TR_Seas_YrLW[[y]] <- data.frame(subset(Caribou_TR_AgglistSeas[[3]],YearSeas == as.numeric(Caribou_TR_Agg_Yrs[y])))
+    names(Caribou_TR_Seas_YrLW)[y] <- paste0(as.character(Caribou_TR_Agg_Yrs[y]),"_",names(Caribou_TR_AgglistSeas[3]))
+  }else{next}
+  
+  if(nrow(data.frame(subset(Caribou_TR_AgglistSeas[[4]],format.Date(timestamp, format = "%Y") == Caribou_TR_Agg_Yrs[y]))) > 0){
+    Caribou_TR_Seas_YrCA[[y]] <- data.frame(subset(Caribou_TR_AgglistSeas[[4]],YearSeas == as.numeric(Caribou_TR_Agg_Yrs[y])))
+    names(Caribou_TR_Seas_YrCA)[y] <- paste0(as.character(Caribou_TR_Agg_Yrs[y]),"_",names(Caribou_TR_AgglistSeas[4]))
+  }else{next}
+  
+   if(nrow(data.frame(subset(Caribou_TR_AgglistSeas[[5]],format.Date(timestamp, format = "%Y") == Caribou_TR_Agg_Yrs[y]))) > 0){
+    Caribou_TR_Seas_YrSU[[y]] <- data.frame(subset(Caribou_TR_AgglistSeas[[5]],YearSeas == as.numeric(Caribou_TR_Agg_Yrs[y])))
+    names(Caribou_TR_Seas_YrSU)[y] <- paste0(as.character(Caribou_TR_Agg_Yrs[y]),"_",names(Caribou_TR_AgglistSeas[5]))
+   }else{next}
+  
+  if(nrow(data.frame(subset(Caribou_TR_AgglistSeas[[6]],format.Date(timestamp, format = "%Y") == Caribou_TR_Agg_Yrs[y]))) > 0){
+    Caribou_TR_Seas_YrRU[[y]] <- data.frame(subset(Caribou_TR_AgglistSeas[[6]],YearSeas == as.numeric(Caribou_TR_Agg_Yrs[y])))
+    names(Caribou_TR_Seas_YrRU)[y] <- paste0(as.character(Caribou_TR_Agg_Yrs[y]),"_",names(Caribou_TR_AgglistSeas[6]))
+  }else{next}
+}
+
+## Remove Null years (i.e., no data for that season by year)
+# EW = Early winter, MW = Mid winter, LW = Late winter, CA = Calving, SU = Summer, RU = Rutting
+
+Caribou_TR_Seas_YrEW <- Caribou_TR_Seas_YrEW[!sapply(Caribou_TR_Seas_YrEW,is.null)]
+Caribou_TR_Seas_YrMW <- Caribou_TR_Seas_YrMW[!sapply(Caribou_TR_Seas_YrMW,is.null)]
+Caribou_TR_Seas_YrLW <- Caribou_TR_Seas_YrLW[!sapply(Caribou_TR_Seas_YrLW,is.null)]
+Caribou_TR_Seas_YrCA <- Caribou_TR_Seas_YrCA[!sapply(Caribou_TR_Seas_YrCA,is.null)]
+Caribou_TR_Seas_YrSU <- Caribou_TR_Seas_YrSU[!sapply(Caribou_TR_Seas_YrSU,is.null)]
+Caribou_TR_Seas_YrRU <- Caribou_TR_Seas_YrRU[!sapply(Caribou_TR_Seas_YrRU,is.null)]
+
+# Carry into loop	to create a SpatialPointsDataFrame for each season by year
+
+## EW
+newlistTR_Agg<-list()
+
+for	(i	in	1:length(Caribou_TR_Seas_YrEW)){
+  if(nrow(Caribou_TR_Seas_YrEW[[i]]) > 0){
+  infile	= Caribou_TR_Seas_YrEW[[i]]
+  infile	= subset(infile,	infile[,2]!="NA")
+  infile	= subset(infile,	infile[,3]!="NA")
+  coordinates(infile) <- c("E","N")
+  proj4string(infile) <- CRS("+init=epsg:26910")
+  name	= paste0("TR_Agg_",names(Caribou_TR_Seas_YrEW[i]))
+  newlistTR_Agg[[i]] <- infile
+  names(newlistTR_Agg)[i] <- name
+  }else{next()}
+}
+
+## Spatial point data frame EW
+Caribou_TR_YrEW_SPDF <- newlistTR_Agg 
+
+## MW
+newlistTR_Agg<-list()
+
+for	(i	in	1:length(Caribou_TR_Seas_YrMW)){
+  if(nrow(Caribou_TR_Seas_YrMW[[i]]) > 0){
+  infile	= Caribou_TR_Seas_YrMW[[i]]
+  infile	= subset(infile,	infile[,2]!="NA")
+  infile	= subset(infile,	infile[,3]!="NA")
+  coordinates(infile) <- c("E","N")
+  proj4string(infile) <- CRS("+init=epsg:26910")
+  name	= paste0("TR_Agg_",names(Caribou_TR_Seas_YrMW[i]))
+  newlistTR_Agg[[i]] <- infile
+  names(newlistTR_Agg)[i] <- name
+  }else{next()}
+}
+
+## Spatial point data frame MW
+Caribou_TR_YrMW_SPDF <- newlistTR_Agg 
+
+## LW
+
+newlistTR_Agg<-list()
+
+for	(i	in	1:length(Caribou_TR_Seas_YrLW)){
+  if(nrow(Caribou_TR_Seas_YrLW[[i]]) > 0){
+  infile	= Caribou_TR_Seas_YrLW[[i]]
+  infile	= subset(infile,	infile[,2]!="NA")
+  infile	= subset(infile,	infile[,3]!="NA")
+  coordinates(infile) <- c("E","N")
+  proj4string(infile) <- CRS("+init=epsg:26910")
+  name	= paste0("TR_Agg_",names(Caribou_TR_Seas_YrLW[i]))
+  newlistTR_Agg[[i]] <- infile
+  names(newlistTR_Agg)[i] <- name
+  }else{next()}
+}
+
+## Spatial point data frame LW
+Caribou_TR_YrLW_SPDF <- newlistTR_Agg 
+
+## CA
+newlistTR_Agg<-list()
+
+for	(i	in	1:length(Caribou_TR_Seas_YrCA)){
+  if(nrow(Caribou_TR_Seas_YrCA[[i]]) > 0){
+  infile	= Caribou_TR_Seas_YrCA[[i]]
+  infile	= subset(infile,	infile[,2]!="NA")
+  infile	= subset(infile,	infile[,3]!="NA")
+  coordinates(infile) <- c("E","N")
+  proj4string(infile) <- CRS("+init=epsg:26910")
+  name	= paste0("TR_Agg_",names(Caribou_TR_Seas_YrCA[i]))
+  newlistTR_Agg[[i]] <- infile
+  names(newlistTR_Agg)[i] <- name
+  }else{next()}
+}
+
+## Spatial point data frame CA
+Caribou_TR_YrCA_SPDF <- newlistTR_Agg 
+
+## SU
+newlistTR_Agg<-list()
+
+for	(i	in	1:length(Caribou_TR_Seas_YrSU)){
+  if(nrow(Caribou_TR_Seas_YrSU[[i]]) > 0){
+  infile	= Caribou_TR_Seas_YrSU[[i]]
+  infile	= subset(infile,	infile[,2]!="NA")
+  infile	= subset(infile,	infile[,3]!="NA")
+  coordinates(infile) <- c("E","N")
+  proj4string(infile) <- CRS("+init=epsg:26910")
+  name	= paste0("TR_Agg_",names(Caribou_TR_Seas_YrSU[i]))
+  newlistTR_Agg[[i]] <- infile
+  names(newlistTR_Agg)[i] <- name
+  }else{next()}
+}
+
+## Spatial point data frame SU
+Caribou_TR_YrSU_SPDF <- newlistTR_Agg 
+
+## RU
+newlistTR_Agg<-list()
+
+for	(i	in	1:length(Caribou_TR_Seas_YrRU)){
+  if(nrow(Caribou_TR_Seas_YrRU[[i]]) > 0){
+  infile	= Caribou_TR_Seas_YrRU[[i]]
+  infile	= subset(infile,	infile[,2]!="NA")
+  infile	= subset(infile,	infile[,3]!="NA")
+  coordinates(infile) <- c("E","N")
+  proj4string(infile) <- CRS("+init=epsg:26910")
+  name	= paste0("TR_Agg_",names(Caribou_TR_Seas_YrRU[i]))
+  newlistTR_Agg[[i]] <- infile
+  names(newlistTR_Agg)[i] <- name
+  }else{next()}
+}
+
+
+## Spatial point data frame RU
+Caribou_TR_YrRU_SPDF <- newlistTR_Agg 
+
+
+```
+
+
+TR - The Four Season Model with winter as one.
+Create	a	list	of	SpatialPointsDataFrames: By Season x Year
+
+
+```{r TRAgg_sp, echo=FALSE, include = FALSE, results = "hide"}
+
+## Lists the aggregated caribou by season into a list by year, named by season_year. Only WI is done, because the other seasons were completed in the six season model.
+
+Caribou_TR_Seas_YrWI <- list() # WI = Winter
+
+for(y in 1:length(Caribou_TR_Agg_Yrs)){
+  
+  if(nrow(data.frame(subset(Caribou_TR_AgglistSeas4[[1]],format.Date(timestamp, format = "%Y") == Caribou_TR_Agg_Yrs[y])))  > 0){
+    Caribou_TR_Seas_YrWI[[y]] <- data.frame(subset(Caribou_TR_AgglistSeas4[[1]],YearSeas == as.numeric(Caribou_TR_Agg_Yrs[y])))
+    names(Caribou_TR_Seas_YrWI)[y] <- paste0(as.character(Caribou_TR_Agg_Yrs[y]),"_",names(Caribou_TR_AgglistSeas4[1]))
+  }else{next}
+
+}
+
+## Remove Null years (i.e., no data for that season by year)
+# EW = Early winter, MW = Mid winter, LW = Late winter, CA = Calving, SU = Summer, RU = Rutting
+
+Caribou_TR_Seas_YrWI <- Caribou_TR_Seas_YrWI[!sapply(Caribou_TR_Seas_YrWI,is.null)]
+
+# Carry into loop	to create a SpatialPointsDataFrame for each season by year
+
+## WI
+newlistTR_Agg<-list()
+
+for	(i	in	1:length(Caribou_TR_Seas_YrWI)){
+  if(nrow(Caribou_TR_Seas_YrWI[[i]]) > 0){
+  infile	= Caribou_TR_Seas_YrWI[[i]]
+  infile	= subset(infile,	infile[,2]!="NA")
+  infile	= subset(infile,	infile[,3]!="NA")
+  coordinates(infile) <- c("E","N")
+  proj4string(infile) <- CRS("+init=epsg:26910")
+  name	= paste0("TR_Agg_",names(Caribou_TR_Seas_YrWI[i]))
+  newlistTR_Agg[[i]] <- infile
+  names(newlistTR_Agg)[i] <- name
+  }else{next()}
+}
+
+## Spatial point data frame RU
+Caribou_TR_YrWI_SPDF <- newlistTR_Agg 
+
+```
+
+
+
+## Trend Roman and Bullmoose points aggregrated together by year
+
+```{r}
+par(mfrow=c(2,2))
+
+for(i in 1:4){
+  jpeg(paste0(here("Maps"),"/SpatialPoints",Caribou_BM_Agg_Yrs[i],".jpg"))
+  plot(QU_All_SA.shp,	main=Caribou_BM_Agg_Yrs[i])
+  plot(Caribou_BM_Agg_Yrs_SPDF[[i]], add=TRUE, pch=20)
+  plot(Caribou_TR_Agg_Yrs_SPDF[[i]], add=TRUE, pch=20)
+  dev.off()
+}
+
+for(i in 5:8){
+  jpeg(paste0(here("Maps"),"/SpatialPoints",Caribou_BM_Agg_Yrs[i],".jpg"))
+  plot(QU_All_SA.shp,	main=Caribou_BM_Agg_Yrs[i])
+  plot(Caribou_BM_Agg_Yrs_SPDF[[i]], add=TRUE, pch=20)
+  plot(Caribou_TR_Agg_Yrs_SPDF[[i]], add=TRUE, pch=20)
+  dev.off()
+}
+
+for(i in 9:12){
+  jpeg(paste0(here("Maps"),"/SpatialPoints",Caribou_BM_Agg_Yrs[i],".jpg"))
+  plot(QU_All_SA.shp,	main=Caribou_BM_Agg_Yrs[i])
+  plot(Caribou_BM_Agg_Yrs_SPDF[[i]], add=TRUE, pch=20)
+  plot(Caribou_TR_Agg_Yrs_SPDF[[i]], add=TRUE, pch=20)
+  dev.off()
+}
+
+for(i in 13:15){
+  jpeg(paste0(here("Maps"),"/SpatialPoints",Caribou_BM_Agg_Yrs[i],".jpg"))
+  plot(QU_All_SA.shp,	main=Caribou_BM_Agg_Yrs[i])
+  plot(Caribou_BM_Agg_Yrs_SPDF[[i]], add=TRUE, pch=20)
+  plot(Caribou_TR_Agg_Yrs_SPDF[[i]], add=TRUE, pch=20)
+  dev.off()
+}
+```
+
+
+## Bullmoose
+
+List	of	SpatialPointsDataFrames: By Individual animals
+
+```{r BM_sp, echo=FALSE}
+
+Caribou_BMlistYr = list()
+
+for(i in 1:length(Caribou_BM_Yrs)){
+  Caribou_BMlistYr[[i]] <- data.frame(subset(Caribou_BM,YearSeas == as.numeric(Caribou_BM_Yrs[i])))
+}
+
+names(Caribou_BMlistYr) <- as.character(Caribou_BM_Yrs)
+
+# Carry into loop	to create a SpatialPointsDataFrame for each year
+
+newlistBM<-list()
+
+for	(i	in	1:length(Caribou_BMlistYr)){
+  infile	= Caribou_BMlistYr[[i]]
+  infile	= subset(infile,	infile[,2]!="NA")
+  infile	= subset(infile,	infile[,3]!="NA")
+  coordinates(infile) <- c("E","N")
+  proj4string(infile) <- CRS("+init=epsg:26910")
+  name	= paste0("BM_",names(Caribou_BMlistYr[i]))
+  newlistBM[[i]] <- infile
+  names(newlistBM)[i] <- name
+}
+
+Caribou_BM_Yrs_SPDF <- newlistBM
+
+#Plot by year
+#par(mfrow=c(2,2))
+#
+#for(i in 1:4){
+#  plot(QU_All_SA.shp,	main=names(Caribou_BM_Yrs[i]))
+#  plot(Caribou_BM_Yrs_SPDF[[i]], add=TRUE, pch=20)
+#}
+#
+#for(i in 5:8){
+#  plot(QU_All_SA.shp,	main=names(Caribou_BM_Yrs[i]))
+#  plot(Caribou_BM_Yrs_SPDF[[i]], add=TRUE, pch=20)
+#}
+#
+#for(i in 9:12){
+#  plot(QU_All_SA.shp,	main=names(Caribou_BM_Yrs[i]))
+#  plot(Caribou_BM_Yrs_SPDF[[i]], add=TRUE, pch=20)
+#}
+#
+#for(i in 13:14){
+# plot(QU_All_SA.shp,	main=names(Caribou_BM_Yrs[i]))
+#  plot(Caribou_BM_Yrs_SPDF[[i]], add=TRUE, pch=20)
+#}
+
+```
+
+
+## TR
+
+Create	a	list	of	SpatialPointsDataFrames: By Animal
+
+```{r TR_sp}
+Caribou_TRlistYr = list()
+
+for(i in 1:length(Caribou_TR_Yrs)){
+  Caribou_TRlistYr[[i]] <- data.frame(subset(Caribou_TR,YearSeas == as.numeric(Caribou_TR_Yrs[i])))
+}
+
+names(Caribou_TRlistYr) <- as.character(Caribou_TR_Yrs)
+
+#	create	a	list	of	SpatialPointsDataFrames
+# for	loop	for	going	through	each	Year
+
+# Carry into loop	to create a SpatialPointsDataFrame for each year
+
+newlistTR<-list()
+
+for	(i	in	1:length(Caribou_TRlistYr)){
+  infile	= Caribou_TRlistYr[[i]]
+  infile	= subset(infile,	infile[,2]!="NA")
+  infile	= subset(infile,	infile[,3]!="NA")
+  coordinates(infile) <- c("E","N")
+  proj4string(infile) <- CRS("+init=epsg:26910")
+  name	= paste0("TR_",names(Caribou_TRlistYr[i]))
+  newlistTR[[i]] <- infile
+  names(newlistTR)[i] <- name
+  }
+
+Caribou_TR_Yrs_SPDF <- newlistTR 
+
+#Plot by year
+#par(mfrow=c(2,2))
+
+#for(i in 1:4){
+#  plot(QU_All_SA.shp,	main=names(Caribou_TR_Yrs[i]))
+#  plot(Caribou_TR_Yrs_SPDF[[i]], add=TRUE, pch=20)
+#}
+
+#for(i in 5:8){
+#  plot(QU_All_SA.shp,	main=names(Caribou_TR_Yrs[i]))
+#  plot(Caribou_TR_Yrs_SPDF[[i]], add=TRUE, pch=20)
+#}
+#
+#for(i in 9:12){
+#  plot(QU_All_SA.shp,	main=names(Caribou_TR_Yrs[i]))
+#  plot(Caribou_TR_Yrs_SPDF[[i]], add=TRUE, pch=20)
+#}
+
+```
+
+Table some of the statistics for the inputs:
+/# of telemetry hits / year
+/# of animals / year
+/# of hits / animal / year
+
+```{r}
+
+Caribou_BM_Agg_Yrs_DF <- list()
+Caribou_BM_DF <- as.data.frame(matrix(nrow=length(Caribou_BM_Agg_Yrs_SPDF),ncol=4))
+colnames(Caribou_BM_DF) <- c("Study_Area","Date","Spatial_Points_n","Animals_n")
+
+for(i in 1:length(Caribou_BM_Agg_Yrs_SPDF)){
+  if(!is.null(Caribou_BM_Agg_Yrs_SPDF[[i]])){
+Caribou_BM_DF[i,1] <- "BM"
+Caribou_BM_DF[i,2] <- as.numeric(substr(names(Caribou_BM_Agg_Yrs_SPDF[i]),8,11))
+Caribou_BM_DF[i,3] <- nrow(Caribou_BM_Agg_Yrs_SPDF[[i]])
+Caribou_BM_DF[i,4] <- length(unique(Caribou_BM_Yrs_SPDF[[i]][,1]$AnimalID))
+  }else{next()}
+}
+
+Caribou_TR_Agg_Yrs_DF <- list()
+Caribou_TR_DF <- as.data.frame(matrix(nrow=length(Caribou_TR_Agg_Yrs_SPDF),ncol=4))
+colnames(Caribou_TR_DF) <- c("Study_Area","Date","Spatial_Points_n","Animals_n")
+
+for(i in 1:length(Caribou_TR_Agg_Yrs_SPDF)){
+Caribou_TR_DF[i,1] <- "TR"
+Caribou_TR_DF[i,2] <- as.numeric(substr(names(Caribou_TR_Agg_Yrs_SPDF[i]),8,11))
+Caribou_TR_DF[i,3] <- nrow(Caribou_TR_Agg_Yrs_SPDF[[i]])
+Caribou_TR_DF[i,4] <- length(unique(Caribou_TR_Yrs_SPDF[[i]][,1]$AnimalID))
+}
+
+Caribou_Tabled <- rbind(Caribou_BM_DF,Caribou_TR_DF)
+Caribou_Tabled$Study_Area <- as.factor(Caribou_Tabled$Study_Area)
+Caribou_Tabled$Date <- as.factor(Caribou_Tabled$Date)
+
+Caribou_Tabled[Caribou_Tabled$Study_Area == "TR",]
+Caribou_Tabled[Caribou_Tabled$Study_Area == "BM",]
+
+
+```
+Export the final data for the BRB models and plot
+
+```{r}
+
+rownames(Caribou_TR) <- c(1:nrow(Caribou_TR))
+Caribou_BMTR <- rbind(Caribou_TR,Caribou_BM)
+
+write.csv(Caribou_BMTR,paste0(here("Input Data"), "/Caribou_noclip.csv"), row.names = FALSE) # For BRB
+Caribou_BMTR <- read.csv(paste0(here("Input Data"), "/Caribou_noclip.csv"))
+
+Caribou_TR <- Caribou_BMTR[which(Caribou_BMTR$SA == "TR"),]
+Caribou_BM <- Caribou_BMTR[which(Caribou_BMTR$SA == "BM"),]
+
+Caribou_TRm <- Caribou_TR
+Caribou_BMm <- Caribou_BM
+
+## Month Year
+Caribou_TRm$MY <- as.Date(paste0(substr(Caribou_TRm$timestamp,1,4),"-", substr(Caribou_TRm$timestamp,6,7),"-01"))
+  
+Caribou_TR_agg <- aggregate(cbind(count = SA) ~ MY, 
+          data = Caribou_TRm, 
+          FUN = function(x){NROW(x)})
+
+Caribou_TR_agg_animal <- aggregate(cbind(count = SA) ~ AnimalID, 
+          data = Caribou_TRm, 
+          FUN = function(x){NROW(x)})
+
+Caribou_BMm$MY <- as.Date(paste0(substr(Caribou_BMm$timestamp,1,4),"-", substr(Caribou_BMm$timestamp,6,7),"-01"))
+  
+Caribou_BM_agg <- aggregate(cbind(count = SA) ~ MY, 
+          data = Caribou_BMm, 
+          FUN = function(x){NROW(x)})
+
+Caribou_BM_agg_animal <- aggregate(cbind(count = SA) ~ AnimalID, 
+          data = Caribou_BMm, 
+          FUN = function(x){NROW(x)})
+
+Caribou_BM_agg$SA <- "Bullmoose"
+Caribou_TR_agg$SA <- "Roman"
+
+Caribou_BMTM_agg <- rbind(Caribou_BM_agg, Caribou_TR_agg)
+
+p = ggplot() + 
+  geom_line(data = Caribou_BMTM_agg, aes(color = SA, x = MY, y = count)) +
+  #Here you set date_breaks  ="6 month" or what you wish
+  scale_colour_manual(values=c(Bullmoose="red2",Roman="dodgerblue2")) +
+  scale_x_date(date_labels="%Y-%m",date_breaks  ="6 months") +
+  xlab('Dates') +  ylab('Telemetry Point Counts')
+
+p$labels$colour <- "Study Area"
+
+Caribou_BM_DF$Date <- as.Date(paste0(Caribou_BM_DF$Date,"-01-01"))
+Caribou_TR_DF$Date <- as.Date(paste0(Caribou_TR_DF$Date,"-01-01"))
+
+p + geom_line(data = Caribou_BM_DF, aes(x = Date, y = Animals_n * 100),linetype = "dotted", color = 'black') +
+    geom_point(data = Caribou_BM_DF, aes(Date, Animals_n * 100), colour = 'red2', size = 1.5) +
+    geom_line(data = Caribou_TR_DF, aes(x = Date, y = Animals_n * 100),linetype = "dotted", color = 'bisque4') +
+    geom_point(data = Caribou_TR_DF,aes(Date, Animals_n * 100), colour = 'dodgerblue2', size = 1.5) +
+    scale_y_continuous(sec.axis = ggplot2::sec_axis(~. / 100, name = "# Animals Tracked", breaks=seq(0, 20, by=1))) + theme_bw() + theme(axis.text.x = element_text(angle = 90, vjust = 0, hjust=0, size = 8)) + theme(panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank()) + geom_rect(aes(xmin = as.Date("2005-01-01"),xmax = as.Date("2013-01-01"),ymin = 0, ymax = Inf), fill="grey", alpha = .2) +
+    geom_rect(aes(xmin = as.Date("2015-01-01"),xmax = as.Date("2021-01-01"),ymin = 0, ymax = Inf), fill="light blue", alpha = .2) + theme(text = element_text(size = 14))
+
+
+```
+
+Plotting the six season model
+
+```{r }
+# EW = Early winter, MW = Mid winter, LW = Late winter, CA = Calving, SU = Summer, RU = Rutting
+season_nam <- c("EW", "MW", "LW" , "CA" , "SU" , "RU")
+
+seasonal <- list(Caribou_TR_YrEW_SPDF, Caribou_TR_YrMW_SPDF, Caribou_TR_YrLW_SPDF, Caribou_TR_YrCA_SPDF, Caribou_TR_YrSU_SPDF, Caribou_TR_YrRU_SPDF, Caribou_BM_YrEW_SPDF, Caribou_BM_YrMW_SPDF, Caribou_BM_YrLW_SPDF, Caribou_BM_YrCA_SPDF, Caribou_BM_YrSU_SPDF, Caribou_BM_YrRU_SPDF)
+
+seasonal_tpointsli <- list()
+b = 1
+
+for(s in 1:length(seasonal)){
+  for	(i	in	1:length(seasonal[[s]])){
+      seasonal_tpointsli[b] <- nrow(seasonal[[s]][[i]]@data)
+      b = b + 1
+  }
+}
+
+seasonal_tpoints <- as.data.frame(unlist(seasonal_tpointsli))
+standard_error <- function(x) sd(x) / sqrt(length(x)) # Create SE function
+
+view(dfSummary(seasonal_tpoints))
+
+x = seasonal_tpoints[,1]
+plotNormalHistogram(x, main="Number of telemetry points per season")
+text(1200,50,labels=paste("Range = ", min(seasonal_tpoints[,1]), "-",max(seasonal_tpoints[,1])))
+text(1200,45,labels=paste("Mean = ", round(mean(seasonal_tpoints[,1]),2)))
+text(1200,40,labels=paste("SE = ", round(standard_error(seasonal_tpoints[,1]),2)))
+
+
+boxplot(x, main="Number of telemetry points per season")
+
+
+## Duplicate the plots stats above with the >5 point threshold set as required for UD calculation.
+
+seasonal_t5pointsli <- list()
+b = 1
+
+for(s in 1:length(seasonal)){
+  for	(i	in	1:length(seasonal[[s]])){
+        if(nrow(seasonal[[s]][[i]]@data) > 5){
+          seasonal_t5pointsli[b] <- nrow(seasonal[[s]][[i]]@data)
+          b = b + 1}
+        else{next()}
+  }
+}
+
+seasonal_t5points <- as.data.frame(unlist(seasonal_t5pointsli))
+
+view(dfSummary(seasonal_t5points))
+
+x = seasonal_t5points[,1]
+plotNormalHistogram(x, main="Number of telemetry points per season")
+text(1200,50,labels=paste("Range = ", min(seasonal_t5points[,1]), "-",max(seasonal_t5points[,1])))
+text(1200,45,labels=paste("Mean = ", round(mean(seasonal_t5points[,1]),2)))
+text(1200,40,labels=paste("SE = ", round(standard_error(seasonal_t5points[,1]),2)))
+
+
+boxplot(x, main="Number of telemetry points per season")
+
+
+```
+
+
+Plotting the four season model
+
+```{r }
+# EW = Early winter, MW = Mid winter, LW = Late winter, CA = Calving, SU = Summer, RU = Rutting
+season_nam <- c("WI" , "CA" , "SU" , "RU")
+
+seasonal <- list(Caribou_TR_YrWI_SPDF, Caribou_TR_YrCA_SPDF, Caribou_TR_YrSU_SPDF, Caribou_TR_YrRU_SPDF, Caribou_BM_YrWI_SPDF, Caribou_BM_YrCA_SPDF, Caribou_BM_YrSU_SPDF, Caribou_BM_YrRU_SPDF)
+seasonal <- lapply(seasonal, function(x) x[lengths(x) > 0])
+
+seasonal_tpointsli <- list()
+b = 1
+
+for(s in 1:length(seasonal)){
+  for	(i	in	1:length(seasonal[[s]])){
+    if(!is.null(nrow(seasonal[[s]][[i]]))){
+      seasonal_tpointsli[b] <- nrow(seasonal[[s]][[i]]@data)
+      b = b + 1
+    }else{next()}
+  }
+}
+
+seasonal_tpoints <- as.data.frame(unlist(seasonal_tpointsli))
+standard_error <- function(x) sd(x) / sqrt(length(x)) # Create SE function
+
+view(dfSummary(seasonal_tpoints))
+
+x = seasonal_tpoints[,1]
+plotNormalHistogram(x, main="Number of telemetry points per season")
+text(1200,50,labels=paste("Range = ", min(seasonal_tpoints[,1]), "-",max(seasonal_tpoints[,1])))
+text(1200,45,labels=paste("Mean = ", round(mean(seasonal_tpoints[,1]),2)))
+text(1200,40,labels=paste("SE = ", round(standard_error(seasonal_tpoints[,1]),2)))
+
+
+boxplot(x, main="Number of telemetry points per season")
+
+
+## Duplicate the plots stats above with the >5 point threshold set as required for UD calculation.
+
+seasonal_t5pointsli <- list()
+b = 1
+
+for(s in 1:length(seasonal)){
+  for	(i	in	1:length(seasonal[[s]])){
+      if(!is.null(nrow(seasonal[[s]][[i]]))){
+
+        if(nrow(seasonal[[s]][[i]]@data) > 5){
+          seasonal_t5pointsli[b] <- nrow(seasonal[[s]][[i]]@data)
+          b = b + 1}
+        else{next()}
+      }
+  }
+}
+
+seasonal_t5points <- as.data.frame(unlist(seasonal_t5pointsli))
+
+view(dfSummary(seasonal_t5points))
+
+x = seasonal_t5points[,1]
+plotNormalHistogram(x, main="Number of telemetry points per season")
+text(1200,50,labels=paste("Range = ", min(seasonal_t5points[,1]), "-",max(seasonal_t5points[,1])))
+text(1200,45,labels=paste("Mean = ", round(mean(seasonal_t5points[,1]),2)))
+text(1200,40,labels=paste("SE = ", round(standard_error(seasonal_t5points[,1]),2)))
+
+
+boxplot(x, main="Number of telemetry points per season")
+
+
+```
+
+Running the 50% - Seasons
+
+
+```{r HREF50 Aggregates, echo=FALSE}
+
+#	Load	required	packages
+require(sp)
+require(maptools)
+require(adehabitatHR)
+require(rgdal)
+
+#######################################################################
+per	=50 #	percent	utilization	distribution	estimated
+h="href" #	bandwidth	setting	("href",	"LSCV",	or	user	specified	number)	
+grid=4000
+extent=2
+#######################################################################
+
+##Aggregated animals in Seasons by Years
+
+UD_area <- list()
+tally = 1
+
+TabUD_area <- data.frame(matrix(ncol=5))
+colnames(TabUD_area) <- c("SA", "season", "year", "area", "nb.reloc")
+
+for(s in 1:length(seasonal)){
+  for	(i	in	1:length(seasonal[[s]])){
+    name = names(seasonal[[s]][i])
+    if(nrow(seasonal[[s]][[i]]@data) > 5){
+    ud <- kernelUD(seasonal[[s]][[i]][,1],h=h,	kern="bivnorm",	grid=grid, extent=extent)
+    ver = getverticeshr(ud, percent = per)
+    UD_area[[tally]] = ver$area
+    TabUD_area[tally,c(1:5)] <- rbind(data.frame(SA =substr(names(seasonal[[s]][i]),1,2), season = substr(names(seasonal[[s]][i]),13,14), year = substr(names(seasonal[[s]][i]),8,11), area = UD_area[[tally]], nb.reloc = length(seasonal[[s]][[i]])))  
+    #row = nrow(seasonal[[s]][[i]])
+    #plot(seasonal[[s]][[i]]@coords,	main= names(name)
+    #plot(ver,	add=TRUE)
+    writeOGR(ver,file.path(here("adeHRoutput_noclip","Seasons")),paste0(name,"_",per,"_",h,"4S"), driver="ESRI Shapefile", overwrite_layer=TRUE)
+    tally = tally + 1
+    }else{next}
+  }
+}
+
+write.csv(TabUD_area, paste0(here("adeHRoutput_noclip","Seasons"), "/Agg_UD_areasWI.csv", sep=""), row.names = FALSE)
+TabUD_area <- read.csv(file = paste0(here("adeHRoutput_noclip","Seasons"), "/Agg_UD_areas.csv"))
+
+TabUD_area_TR_WI <- TabUD_area[which(TabUD_area$season == "WI" & TabUD_area$SA == "TR"),]
+TabUD_area_TR_CA <- TabUD_area[which(TabUD_area$season == "CA" & TabUD_area$SA == "TR"),]
+TabUD_area_TR_SU <- TabUD_area[which(TabUD_area$season == "SU" & TabUD_area$SA == "TR"),]
+TabUD_area_TR_RU <- TabUD_area[which(TabUD_area$season == "RU" & TabUD_area$SA == "TR"),]
+TabUD_area_BM_WI <- TabUD_area[which(TabUD_area$season == "WI" & TabUD_area$SA == "BM"),]
+TabUD_area_BM_CA <- TabUD_area[which(TabUD_area$season == "CA" & TabUD_area$SA == "BM"),]
+TabUD_area_BM_SU <- TabUD_area[which(TabUD_area$season == "SU" & TabUD_area$SA == "BM"),]
+TabUD_area_BM_RU <- TabUD_area[which(TabUD_area$season == "RU" & TabUD_area$SA == "BM"),]
+
+par(mfrow=c(2,2))
+plot(x = TabUD_area_TR_WI$nb.reloc, y = TabUD_area_TR_WI$area, xlab="Sample Size", ylab = expression("UD Area m"^2), main = "Roman Winter")
+plot(x = TabUD_area_TR_CA$nb.reloc, y = TabUD_area_TR_CA$area, xlab="Sample Size", ylab = expression("UD Area m"^2), main = "Roman Calving")
+plot(x = TabUD_area_TR_SU$nb.reloc, y = TabUD_area_TR_SU$area, xlab="Sample Size", ylab = expression("UD Area m"^2), main = "Roman Summer")
+plot(x = TabUD_area_TR_RU$nb.reloc, y = TabUD_area_TR_RU$area, xlab="Sample Size", ylab = expression("UD Area m"^2), main = "Roman Rutting")
+
+par(mfrow=c(2,2))
+plot(x = TabUD_area_BM_WI$nb.reloc, y = TabUD_area_BM_WI$area, xlab="Sample Size", ylab = expression("UD Area m"^2), main = "Bullmoose Winter")
+plot(x = TabUD_area_BM_CA$nb.reloc, y = TabUD_area_BM_CA$area, xlab="Sample Size", ylab = expression("UD Area m"^2), main = "Bullmoose Calving")
+plot(x = TabUD_area_BM_SU$nb.reloc, y = TabUD_area_BM_SU$area, xlab="Sample Size", ylab = expression("UD Area m"^2), main = "Bullmoose Summer")
+plot(x = TabUD_area_BM_RU$nb.reloc, y = TabUD_area_BM_RU$area, xlab="Sample Size", ylab = expression("UD Area m"^2), main = "Bullmoose Rutting")
+
+
+```
+h2{Adehabitat Kernel Utilization Density Models}
+
+Alternate - LSCV, does not converge for some but reserved here for future inspect if needed.
+#######################################################################
+#per	=95 #	percent	utilization	distribution	estimated
+#h="LSCV" #	bandwidth	setting	("href",	"LSCV",	or	user	specified	number)	
+#grid=2500
+#######################################################################
+
+## Ignore the warnings:
+'CRS object has comment, which is lost in output; in tests, see
+https://cran.r-project.org/web/packages/sp/vignettes/CRS_warnings.html'
+
+The CRS warnings are part of the CRS transition that is taking place in 2023 - it does not impact the results.
+See: https://gis.stackexchange.com/questions/364667/r-4-0-1-not-sure-i-understand-this-message-warning-message-in-proj4stringx 
+
+```{r Running the 95%}
+#######################################################################
+per	= 95 #	percent	utilization	distribution	estimated
+h="href" #	bandwidth	setting	("href",	"LSCV",	or	user	specified	number)	
+grid=3500
+#######################################################################
+
+#	Load	required	packages
+require(sp)
+require(maptools)
+require(adehabitatHR)
+require(rgdal)
+
+##BM - Individual animals in Years
+
+for	(i	in	1:length(Caribou_BM_Yrs)){
+  name= names(Caribou_BM_Yrs_SPDF[i])
+  ud <- kernelUD(Caribou_BM_Yrs_SPDF[[i]][,1],h=h,	kern="bivnorm",	grid=grid)
+  ver = getverticeshr(ud, percent = per)
+  #area = ver$area	#get	homerange	polygon	area
+  #h_value = ud[[1]]@h$h ##If I need to make a list of results in a matrix
+  #h_meth = ud[[1]]@h$meth
+  #row = nrow(Caribou_BM_Yrs[[i]])
+  #plot(Caribou_BM_Yrs[[i]]@coords,	main= names(Caribou_BM_Yrs[i]))
+  #plot(ver,	add=TRUE)
+  writeOGR(ver,file.path(here("adeHRoutput")),paste0(name,"_",per,"_",h,"_",i,"_kernel_BM"), driver="ESRI Shapefile", overwrite_layer=TRUE)
+  cat(showWKT(proj4string(Caribou_BM_Yrs_SPDF[[i]])),
+      file=paste0(name,"_",per,"_",h,"_",i,"_kernel_BM.prj"))
+}
+
+##TR - Individual animals in Years
+
+for	(i	in	1:length(Caribou_TR_Yrs)){
+  name= names(Caribou_TR_Yrs_SPDF[i])
+  ud <- kernelUD(Caribou_TR_Yrs_SPDF[[i]][,1],h=h,	kern="bivnorm",	grid=grid)
+  ver = getverticeshr(ud, percent = per)
+  #area = ver$area	#get	homerange	polygon	area
+  #h_value = ud[[1]]@h$h ##If I need to make a list of results in a matrix
+  #h_meth = ud[[1]]@h$meth
+  #row = nrow(Caribou_TR_Yrs[[i]])
+  #plot(Caribou_TR_Yrs[[i]]@coords,	main= names(Caribou_TR_Yrs[i]))
+  #plot(ver,	add=TRUE)
+  writeOGR(ver,file.path(here("adeHRoutput")),paste0(name,"_",per,"_",h,"_",i,"_kernel_BM"), driver="ESRI Shapefile", overwrite_layer=TRUE)
+  cat(showWKT(proj4string(Caribou_TR_Yrs_SPDF[[i]])),
+      file=paste0(name,"_",per,"_",h,"_",i,"_kernel_TR.prj"))
+  results=rbind(results,c(name,	"KERNEL",per,	row,	area,	h_value,	h_meth))
+}
+```
+
+Running the 95% - Aggregated Animals
+
+
+```{r HREF95_Agg}
+#######################################################################
+per	= 95 #	percent	utilization	distribution	estimated
+h="href" #	bandwidth	setting	("href",	"LSCV",	or	user	specified	number)	
+grid=3500
+#######################################################################
+
+##BM - Aggregated animals in Years
+
+for	(i	in	1:length(Caribou_BM_Agg_Yrs)){
+  name= names(Caribou_BM_Agg_Yrs_SPDF[i])
+  ud <- kernelUD(Caribou_BM_Agg_Yrs_SPDF[[i]][,1],h=h,	kern="bivnorm",	grid=grid)
+  ver = getverticeshr(ud, percent = per)
+  #area = ver$area	#get	homerange	polygon	area
+  #h_value = ud[[1]]@h$h ##If I need to make a list of results in a matrix
+  #h_meth = ud[[1]]@h$meth
+  #row = nrow(Caribou_BM_Agg_Yrs[[i]])
+  #plot(Caribou_BM_Yrs[[i]]@coords,	main= names(Caribou_BM_Yrs[i]))
+  #plot(ver,	add=TRUE)
+  writeOGR(ver,file.path(here("adeHRoutput_noclip")),paste0(name,"_",per,"_",h,"_",i,"_kernel_BM"), driver="ESRI Shapefile", overwrite_layer=TRUE)
+  cat(showWKT(proj4string(Caribou_BM_Agg_Yrs_SPDF[[i]])),
+      file=paste0(name,"_",per,"_",h,"_",i,"_kernel_BM_Agg.prj"))
+}
+
+##TR - Aggregated animals in Years
+##	Initilizing	matrix	for	storing	results - if we want results, a custom list design
+## is needed for this code - note h_value and h_meth are commented out, but these could
+## be added into another list or dataframe. For now, the map output is what we need.
+#results	= matrix(nrow=0,	ncol=7)
+#colnames(results)<-c("ID",	"HR_TYPE",	"KERNEL_LEVEL",	"POINTS",	"AREA_HA",	
+#                     "h_value",	"h_meth")
+
+for	(i	in	1:length(Caribou_TR_Agg_Yrs)){
+  name= names(Caribou_TR_Agg_Yrs_SPDF[i])
+  ud <- kernelUD(Caribou_TR_Agg_Yrs_SPDF[[i]][,1],h=h,	kern="bivnorm",	grid=grid)
+  ver = getverticeshr(ud, percent = per)
+  area = ver$area	#get	homerange	polygon	area
+  #h_value = ud[[1]]@h$h ##If I need to make a list of results in a matrix
+  #h_meth = ud[[1]]@h$meth
+  #row = nrow(Caribou_TR_Agg_Yrs[[i]])
+  #plot(Caribou_TR_Yrs[[i]]@coords,	main= names(Caribou_TR_Yrs[i]))
+  #plot(ver,	add=TRUE)
+  writeOGR(ver,file.path(here("adeHRoutput_noclip")),paste0(name,"_",per,"_",h,"_",i,"_kernel_BM"), driver="ESRI Shapefile", overwrite_layer=TRUE)
+  cat(showWKT(proj4string(Caribou_TR_Agg_Yrs_SPDF[[i]])),
+      file=paste0(name,"_",per,"_",h,"_",i,"_kernel_TR_Agg.prj"))
+  }
+
+```
+
+
+Running the 50% - Individual Animals
+## Note that this stops in year 2012 for BM - one of the animals is not relocated enough...need to address this.
+
+
+```{r HREF50 Animals, echo=FALSE}
+#	Load	required	packages
+require(sp)
+require(maptools)
+require(adehabitatHR)
+require(rgdal)
+
+#######################################################################
+per	=50 #	percent	utilization	distribution	estimated
+h="href" #	bandwidth	setting	("href",	"LSCV",	or	user	specified	number)	
+grid=3500
+#######################################################################
+
+##BM - Individual animals in Years
+
+for	(i	in	1:length(Caribou_BM_Yrs)){
+  name= names(Caribou_BM_Yrs_SPDF[i])
+  ud <- kernelUD(Caribou_BM_Yrs_SPDF[[i]][,1], h=h,	kern="bivnorm",	grid=grid)
+  ver = getverticeshr(ud, percent = per)
+  #area = ver$area	#get	homerange	polygon	area
+  #h_value = ud[[1]]@h$h ##If I need to make a list of results in a matrix
+  #h_meth = ud[[1]]@h$meth
+  #row = nrow(Caribou_BM_Yrs[[i]])
+  #plot(Caribou_BM_Yrs[[i]]@coords,	main= names(Caribou_BM_Yrs[i]))
+  #plot(ver,	add=TRUE)
+  writeOGR(ver,file.path(here(loc.output)),paste0(name,"_",per,"_",h,"_",i,"_kernel_BM"), driver="ESRI Shapefile", overwrite_layer=TRUE)
+  cat(showWKT(proj4string(Caribou_BM_Yrs_SPDF[[i]])),
+      file=paste0(name,"_",per,"_",h,"_",i,"_kernel_BM.prj"))
+}
+
+##TR - Individual animals in Years
+
+for	(i	in	1:length(Caribou_TR_Yrs)){
+  name= names(Caribou_TR_Yrs_SPDF[i])
+  ud <- kernelUD(Caribou_TR_Yrs_SPDF[[i]][,1],h=h,	kern="bivnorm",	grid=grid)
+  ver = getverticeshr(ud, percent = per)
+  #area = ver$area	#get	homerange	polygon	area
+  #h_value = ud[[1]]@h$h ##If I need to make a list of results in a matrix
+  #h_meth = ud[[1]]@h$meth
+  #row = nrow(Caribou_TR_Yrs[[i]])
+  #plot(Caribou_TR_Yrs[[i]]@coords,	main= names(Caribou_TR_Yrs[i]))
+  #plot(ver,	add=TRUE)
+  writeOGR(ver,file.path(here(loc.output)),paste0(name,"_",per,"_",h,"_",i,"_kernel_BM"), driver="ESRI Shapefile", overwrite_layer=TRUE)
+  cat(showWKT(proj4string(Caribou_TR_Yrs_SPDF[[i]])),
+      file=paste0(name,"_",per,"_",h,"_",i,"_kernel_TR.prj"))
+  results=rbind(results,c(name,	"KERNEL",per,	row,	area,	h_value,	h_meth))
+}
+
+```
+
+Running the 50% - Aggregated Animals
+
+
+```{r HREF50 Aggregates, echo=FALSE}
+
+#	Load	required	packages
+require(sp)
+require(maptools)
+require(adehabitatHR)
+require(rgdal)
+
+#######################################################################
+per	=50 #	percent	utilization	distribution	estimated
+h="href" #	bandwidth	setting	("href",	"LSCV",	or	user	specified	number)	
+grid=3500
+#######################################################################
+
+##BM - Aggregated animals in Years
+
+for	(i	in	1:length(Caribou_BM_Agg_Yrs)){
+  name= names(Caribou_BM_Agg_Yrs_SPDF[i])
+  ud <- kernelUD(Caribou_BM_Agg_Yrs_SPDF[[i]][,1],h=h,	kern="bivnorm",	grid=grid)
+  ver = getverticeshr(ud, percent = per)
+  #area = ver$area	#get	homerange	polygon	area
+  #h_value = ud[[1]]@h$h ##If I need to make a list of results in a matrix
+  #h_meth = ud[[1]]@h$meth
+  #row = nrow(Caribou_BM_Agg_Yrs[[i]])
+  #plot(Caribou_BM_Yrs[[i]]@coords,	main= names(Caribou_BM_Yrs[i]))
+  #plot(ver,	add=TRUE)
+  writeOGR(ver,file.path(here("adeHRoutput_noclip")),paste0(name,"_",per,"_",h,"_",i,"_kernel_BM"), driver="ESRI Shapefile", overwrite_layer=TRUE)
+  cat(showWKT(proj4string(Caribou_BM_Agg_Yrs_SPDF[[i]])),
+      file=paste0(name,"_",per,"_",h,"_",i,"_kernel_BM_Agg.prj"))
+}
+
+##TR - Aggregated animals in Years
+##	Initilizing	matrix	for	storing	results - if we want results, a custom list design
+## is needed for this code - note h_value and h_meth are commented out, but these could
+## be added into another list or dataframe. For now, the map output is what we need.
+#results	= matrix(nrow=0,	ncol=7)
+#colnames(results)<-c("ID",	"HR_TYPE",	"KERNEL_LEVEL",	"POINTS",	"AREA_HA",	
+#                     "h_value",	"h_meth")
+
+for	(i	in	1:length(Caribou_TR_Agg_Yrs)){
+  name= names(Caribou_TR_Agg_Yrs_SPDF[i])
+  ud <- kernelUD(Caribou_TR_Agg_Yrs_SPDF[[i]][,1],h=h,	kern="bivnorm",	grid=grid)
+  ver = getverticeshr(ud, percent = per)
+  area = ver$area	#get	homerange	polygon	area
+  #h_value = ud[[1]]@h$h ##If I need to make a list of results in a matrix
+  #h_meth = ud[[1]]@h$meth
+  #row = nrow(Caribou_TR_Agg_Yrs[[i]])
+  #plot(Caribou_TR_Yrs[[i]]@coords,	main= names(Caribou_TR_Yrs[i]))
+  #plot(ver,	add=TRUE)
+  writeOGR(ver,file.path(here("adeHRoutput_noclip")),paste0(name,"_",per,"_",h,"_",i,"_kernel_BM"), driver="ESRI Shapefile", overwrite_layer=TRUE)
+  cat(showWKT(proj4string(Caribou_TR_Agg_Yrs_SPDF[[i]])),
+      file=paste0(name,"_",per,"_",h,"_",i,"_kernel_TR_Agg.prj"))
+}
+```
+
+
+Running the 75% - Individual Animals
+
+```{r}
+#	Load	required	packages
+require(sp)
+require(maptools)
+require(adehabitatHR)
+require(rgdal)
+
+#######################################################################
+per	=75 #	percent	utilization	distribution	estimated
+h="href" #	bandwidth	setting	("href",	"LSCV",	or	user	specified	number)	
+grid=3500
+#######################################################################
+
+##BM - Individual animals in Years
+
+for	(i	in	1:length(Caribou_BM_Yrs)){
+  name= names(Caribou_BM_Yrs_SPDF[i])
+  ud <- kernelUD(Caribou_BM_Yrs_SPDF[[i]][,1], h=h,	kern="bivnorm",	grid=grid)
+  ver = getverticeshr(ud, percent = per)
+  #area = ver$area	#get	homerange	polygon	area
+  #h_value = ud[[1]]@h$h ##If I need to make a list of results in a matrix
+  #h_meth = ud[[1]]@h$meth
+  #row = nrow(Caribou_BM_Yrs[[i]])
+  #plot(Caribou_BM_Yrs[[i]]@coords,	main= names(Caribou_BM_Yrs[i]))
+  #plot(ver,	add=TRUE)
+  writeOGR(ver,file.path(here(loc.output)),paste0(name,"_",per,"_",h,"_",i,"_kernel_BM"), driver="ESRI Shapefile", overwrite_layer=TRUE)
+  cat(showWKT(proj4string(Caribou_BM_Yrs_SPDF[[i]])),
+      file=paste0(name,"_",per,"_",h,"_",i,"_kernel_BM.prj"))
+}
+
+##TR - Individual animals in Years
+
+for	(i	in	1:length(Caribou_TR_Yrs)){
+  name= names(Caribou_TR_Yrs_SPDF[i])
+  ud <- kernelUD(Caribou_TR_Yrs_SPDF[[i]][,1],h=h,	kern="bivnorm",	grid=grid)
+  ver = getverticeshr(ud, percent = per)
+  #area = ver$area	#get	homerange	polygon	area
+  #h_value = ud[[1]]@h$h ##If I need to make a list of results in a matrix
+  #h_meth = ud[[1]]@h$meth
+  #row = nrow(Caribou_TR_Yrs[[i]])
+  #plot(Caribou_TR_Yrs[[i]]@coords,	main= names(Caribou_TR_Yrs[i]))
+  #plot(ver,	add=TRUE)
+  writeOGR(ver,file.path(here(loc.output)),paste0(name,"_",per,"_",h,"_",i,"_kernel_BM"), driver="ESRI Shapefile", overwrite_layer=TRUE)
+  cat(showWKT(proj4string(Caribou_TR_Yrs_SPDF[[i]])),
+      file=paste0(name,"_",per,"_",h,"_",i,"_kernel_TR.prj"))
+  results=rbind(results,c(name,	"KERNEL",per,	row,	area,	h_value,	h_meth))
+}
+```
+
+Running the 75% - Aggregated Animals
+
+```{r}
+
+#######################################################################
+per	=75 #	percent	utilization	distribution	estimated
+h="href" #	bandwidth	setting	("href",	"LSCV",	or	user	specified	number)	
+grid=3500
+#######################################################################
+
+#	Load	required	packages
+require(sp)
+require(maptools)
+require(adehabitatHR)
+require(rgdal)
+
+##BM - Aggregated animals in Years
+
+for	(i	in	1:length(Caribou_BM_Agg_Yrs)){
+  name= names(Caribou_BM_Agg_Yrs_SPDF[i])
+  ud <- kernelUD(Caribou_BM_Agg_Yrs_SPDF[[i]][,1],h=h,	kern="bivnorm",	grid=grid)
+  ver = getverticeshr(ud, percent = per)
+  #area = ver$area	#get	homerange	polygon	area
+  #h_value = ud[[1]]@h$h ##If I need to make a list of results in a matrix
+  #h_meth = ud[[1]]@h$meth
+  #row = nrow(Caribou_BM_Agg_Yrs[[i]])
+  #plot(Caribou_BM_Yrs[[i]]@coords,	main= names(Caribou_BM_Yrs[i]))
+  #plot(ver,	add=TRUE)
+  writeOGR(ver,file.path(here(loc.output)),paste0(name,"_",per,"_",h,"_",i,"_kernel_BM"), driver="ESRI Shapefile", overwrite_layer=TRUE)
+  cat(showWKT(proj4string(Caribou_BM_Agg_Yrs_SPDF[[i]])),
+      file=paste0(name,"_",per,"_",h,"_",i,"_kernel_BM_Agg.prj"))
+}
+
+##TR - Aggregated animals in Years
+##	Initilizing	matrix	for	storing	results - if we want results, a custom list design
+## is needed for this code - note h_value and h_meth are commented out, but these could
+## be added into another list or dataframe. For now, the map output is what we need.
+#results	= matrix(nrow=0,	ncol=7)
+#colnames(results)<-c("ID",	"HR_TYPE",	"KERNEL_LEVEL",	"POINTS",	"AREA_HA",	
+#                     "h_value",	"h_meth")
+
+for	(i	in	1:length(Caribou_TR_Agg_Yrs)){
+  name= names(Caribou_TR_Agg_Yrs_SPDF[i])
+  ud <- kernelUD(Caribou_TR_Agg_Yrs_SPDF[[i]][,1],h=h,	kern="bivnorm",	grid=grid)
+  ver = getverticeshr(ud, percent = per)
+  area = ver$area	#get	homerange	polygon	area
+  #h_value = ud[[1]]@h$h ##If I need to make a list of results in a matrix
+  #h_meth = ud[[1]]@h$meth
+  #row = nrow(Caribou_TR_Agg_Yrs[[i]])
+  #plot(Caribou_TR_Yrs[[i]]@coords,	main= names(Caribou_TR_Yrs[i]))
+  #plot(ver,	add=TRUE)
+  writeOGR(ver,file.path(here(loc.output)),paste0(name,"_",per,"_",h,"_",i,"_kernel_BM"), driver="ESRI Shapefile", overwrite_layer=TRUE)
+  cat(showWKT(proj4string(Caribou_TR_Agg_Yrs_SPDF[[i]])),
+      file=paste0(name,"_",per,"_",h,"_",i,"_kernel_TR_Agg.prj"))
+}
+
+```
+
+
+
+
+
+

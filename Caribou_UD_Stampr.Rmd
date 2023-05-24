@@ -1,0 +1,1594 @@
+---
+title: "Stampr_UD_move"
+author: "Mark Thompson"
+date: '2022-07-07'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Analysis of 50% UD Quintette polygons using Stampr (Long, Robertson, Nelson 2018)
+
+Long, J., Robertson, C., Nelson, T. 2018. stampr: Spatial-Temporal Analysis of Moving Polygons in R. Journal of Statistical Software. https://doi.org/10.18637/jss.v084.c01
+
+
+
+```{r }
+
+##################################################################
+
+install.packages("sp")
+install.packages("sf")
+install.packages("rgdal")
+install.packages("stampr")
+install.packages("ggplot2")
+install.packages("scales")
+install.packages("here")
+install.packages("quickPlot")
+install.packages("maptools")
+install.packages("geosphere")
+install.packages("viridisLite")
+install.packages("ggspatial")
+install.packages("terra")
+install.packages("tmap")
+install.packages("imager")
+install.packages("ragg")
+install.packages("ggrepel")
+
+# Libraries -------------------------------------------------------------------------
+library(sp)
+library(sf)
+library(rgdal)
+library(stampr)
+library(ggplot2)
+library(scales)
+library(here)
+library(quickPlot)
+library(maptools)
+library(geosphere)
+library(viridisLite)
+library(ggspatial)
+library(terra)
+library(tmap)
+library(imager)
+library(ragg)
+library(ggrepel)
+
+
+```
+
+## Retrieve the UD polygons organized by season and by study area (BM and TR)
+
+```{r , echo=FALSE}
+
+seasonsUD <- list()
+season_UDdir <- gsub(".shp", "",dir(here("adeHRoutput_noclip","Seasons"),pattern=".shp$"))
+
+
+for(i in 1:length(season_UDdir)){
+  name = season_UDdir[i]
+  seasonsUD[i] <- rgdal::readOGR(paste0(here("adeHRoutput_noclip","Seasons"),"/"), name)
+  names(seasonsUD[i]) <- name
+}
+
+names(seasonsUD) <- season_UDdir
+
+## organize each "SpatialPolygonsDataFrame" into a different season
+# WI =, CA = Calving, SU = Summer, RU = Rutting
+
+BMWI <- seasonsUD[grepl("BM", names(seasonsUD)) & grepl("WI", names(seasonsUD))]
+BMCA <- seasonsUD[grepl("BM", names(seasonsUD)) & grepl("CA", names(seasonsUD))]
+BMSU <- seasonsUD[grepl("BM", names(seasonsUD)) & grepl("SU", names(seasonsUD))]
+BMRU <- seasonsUD[grepl("BM", names(seasonsUD)) & grepl("RU", names(seasonsUD))]
+
+TRWI <- seasonsUD[grepl("TR", names(seasonsUD)) & grepl("WI", names(seasonsUD))]
+TRCA <- seasonsUD[grepl("TR", names(seasonsUD)) & grepl("CA", names(seasonsUD))]
+TRSU <- seasonsUD[grepl("TR", names(seasonsUD)) & grepl("SU", names(seasonsUD))]
+TRRU <- seasonsUD[grepl("TR", names(seasonsUD)) & grepl("RU", names(seasonsUD))]
+
+```
+
+Employ the "stampr" package to plot and track the movement of the seasonal UD polygons. It works only in pairs of time1 to time2, so this organizes pairs into a time by movement sequence.
+
+
+```{r , echo=FALSE}
+
+## How many years were gathered in a study area per season? Some years there may have been too few GPS data points ( <5 ) for a UD to be created.
+#season_nam <- c("EW", "MW", "LW" , "CA" , "SU" , "RU")
+
+CCBS_WI <- seasonsUD[grepl("BM", names(seasonsUD)) & grepl("WI", names(seasonsUD))]
+CCBS_CA <- seasonsUD[grepl("BM", names(seasonsUD)) & grepl("CA", names(seasonsUD))]
+CCBS_SU <- seasonsUD[grepl("BM", names(seasonsUD)) & grepl("SU", names(seasonsUD))]
+CCBS_RU <- seasonsUD[grepl("BM", names(seasonsUD)) & grepl("RU", names(seasonsUD))]
+
+BKRQ_WI <- seasonsUD[grepl("TR", names(seasonsUD)) & grepl("WI", names(seasonsUD))]
+BKRQ_CA <- seasonsUD[grepl("TR", names(seasonsUD)) & grepl("CA", names(seasonsUD))]
+BKRQ_SU <- seasonsUD[grepl("TR", names(seasonsUD)) & grepl("SU", names(seasonsUD))]
+BKRQ_RU <- seasonsUD[grepl("TR", names(seasonsUD)) & grepl("RU", names(seasonsUD))]
+
+## These are SpatialDataFramePolygons in a list, so I am using list() instead of lapply() for now.
+years <- c("2003", "2004", "2005", "2006", "2007", "2008", "2009", "2010", "2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019", "2020", "2021")
+
+BM_sUDs <- list(CCBS_WI, CCBS_CA, CCBS_SU, CCBS_RU)
+BM_sUDsn <- c("CCBS_WI", "CCBS_CA", "CCBS_SU", "CCBS_RU")
+BM_chSum <- list()
+BM_chname <- list()
+lc = 1
+
+for(n in 1:length(BM_sUDs)){
+  for(y in 1:length(BM_sUDs[[n]])){
+    if(y < length(BM_sUDs[[n]])-1){
+      x1 <- BM_sUDs[[n]][[y]]
+      x2 <- BM_sUDs[[n]][[y+1]]
+      x1$ID <-1
+      x2$ID <-2
+      BM_chSum[[lc]] <- assign(paste0(BM_sUDsn[n],"_",substr(names(BM_sUDs[[n]][y]), 8, 11)),stamp(x1, x2, direction = FALSE, distance = FALSE, shape=FALSE))
+      BM_chname[lc] <- paste0(BM_sUDsn[n],"_",substr(names(BM_sUDs[[n]][y]), 8, 11))
+      lc = lc+1}else{next()}
+  }
+}
+
+BM_chSum_df <- unlist(BM_chSum)
+names(BM_chSum_df) <- unlist(BM_chname)
+
+TR_sUDs <- list(BKRQ_WI, BKRQ_CA, BKRQ_SU, BKRQ_RU)
+TR_sUDsn <- c("BKRQ_WI", "BKRQ_CA", "BKRQ_SU", "BKRQ_RU")
+TR_chSum <- list()
+TR_chname <- list()
+lc = 1
+
+for(n in 1:length(TR_sUDs)){
+  for(y in 1:length(TR_sUDs[[n]])){
+    if(y < length(TR_sUDs[[n]])-1){
+      x1 <- TR_sUDs[[n]][[y]]
+      x2 <- TR_sUDs[[n]][[y+1]]
+      x1$ID <-1
+      x2$ID <-2
+      TR_chSum[[lc]] <- assign(paste0(TR_sUDsn[n],"_",substr(names(TR_sUDs[[n]][y]), 8, 11)),stamp(x1, x2,direction = TRUE, distance = TRUE))
+      TR_chname[lc] <- paste0(TR_sUDsn[n],"_",substr(names(TR_sUDs[[n]][y]), 8, 11))
+      lc = lc+1}else{next()}
+  }
+}
+
+TR_chSum_df <- unlist(TR_chSum)
+names(TR_chSum_df) <- unlist(TR_chname)
+TR_chSum2 <- as.list(TR_chSum_df)
+
+cx <- stamp.group.summary(TR_chSum2[[1]])
+stamp.map(TR_chSum2[[1]], by = "LEV1", main=names(TR_chSum2[1]))
+
+
+```
+
+Expansion plots
+```{r , echo=FALSE}
+
+### CCBS - BM, WI expansion contraction
+### These should be apply or looped in, but in a rush I slopply did it this way. Sorry for the long code, but it works.
+
+## Confirm the number of rows is always 1 for each:
+for(i in 1:length(BMWI)){print(nrow(BMWI[[i]]))}
+
+AE_BMWE <- data.frame(aEXPN = 1, AREA = 1)
+
+ BMWI[[1]]$ID <- 1
+ BMWI[[2]]$ID <- 2
+ 
+ch <- stamp(BMWI[[1]], BMWI[[2]],direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+
+AE_BMWE[1,1] = (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[1,2] = (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMWI[[2]]$ID <- 1
+ BMWI[[3]]$ID <- 2
+ 
+ch <- stamp(BMWI[[2]], BMWI[[3]],direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[2,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[2,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+# BMWI[[3]]$ID <- 1
+# BMWI[[4]]$ID <- 2
+ 
+#ch <- stamp(BMWI[[3]], BMWI[[4]], direction = TRUE, distance = TRUE)
+#chSum <- stamp.group.summary(ch)
+#chSum <- chSum[chSum$nEVENTS > 1, ]
+
+#AE_BMWE[2,1] <- (chSum$aEXPN / chSum$AREA) * 100
+#AE_BMWE[2,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMWI[[4]]$ID <- 1
+ BMWI[[5]]$ID <- 2
+ 
+ch <- stamp(BMWI[[5]], BMWI[[6]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[3,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[3,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMWI[[5]]$ID <- 1
+ BMWI[[6]]$ID <- 2
+ 
+ch <- stamp(BMWI[[5]], BMWI[[6]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[4,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[4,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMWI[[6]]$ID <- 1
+ BMWI[[7]]$ID <- 2
+ 
+ch <- stamp(BMWI[[5]], BMWI[[6]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[5,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[6,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMWI[[7]]$ID <- 1
+ BMWI[[8]]$ID <- 2
+ 
+ch <- stamp(BMWI[[7]], BMWI[[8]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[6,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[6,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMWI[[8]]$ID <- 1
+ BMWI[[9]]$ID <- 2
+ 
+ch <- stamp(BMWI[[8]], BMWI[[9]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[7,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[7,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMWI[[9]]$ID <- 1
+ BMWI[[10]]$ID <- 2
+ 
+ch <- stamp(BMWI[[9]], BMWI[[10]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[8,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[8,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMWI[[10]]$ID <- 1
+ BMWI[[11]]$ID <- 2
+ 
+ch <- stamp(BMWI[[10]], BMWI[[11]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[9,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[9,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMWI[[11]]$ID <- 1
+ BMWI[[12]]$ID <- 2
+ 
+ch <- stamp(BMWI[[11]], BMWI[[12]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[10,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[10,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+# BMWI[[12]]$ID <- 1
+# BMWI[[13]]$ID <- 2
+ 
+#ch <- stamp(BMWI[[12]], BMWI[[13]], direction = TRUE, distance = TRUE)
+#chSum <- stamp.group.summary(ch)
+#chSum <- chSum[chSum$nEVENTS > 1, ]
+#
+#AE_BMWE[10,1] <- (chSum$aEXPN / chSum$AREA) * 100
+#AE_BMWE[10,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMWI[[13]]$ID <- 1
+ BMWI[[14]]$ID <- 2
+ 
+ch <- stamp(BMWI[[13]], BMWI[[14]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[11,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[11,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+# BMWI[[14]]$ID <- 1
+# BMWI[[15]]$ID <- 2
+ 
+#ch <- stamp(BMWI[[14]], BMWI[[15]], direction = TRUE, distance = TRUE)
+#chSum <- stamp.group.summary(ch)
+#chSum <- chSum[chSum$nEVENTS > 1, ]
+
+#AE_BMWE[11,1] <- (chSum$aEXPN / chSum$AREA) * 100
+#AE_BMWE[11,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMWI[[15]]$ID <- 1
+ BMWI[[16]]$ID <- 2
+ 
+ch <- stamp(BMWI[[15]], BMWI[[16]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[12,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[12,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMWI[[16]]$ID <- 1
+ BMWI[[17]]$ID <- 2
+ 
+ch <- stamp(BMWI[[16]], BMWI[[17]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[13,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[13,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMWI[[17]]$ID <- 1
+ BMWI[[18]]$ID <- 2
+ 
+ch <- stamp(BMWI[[17]], BMWI[[18]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[14,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[14,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+rownames(AE_BMWE) = c("03-04", "04-05", "06-07", "07-08", "08-09", "09-10", "10-11", "11-12", "12-13", "13-14", "15-16", "17-18", "18-19", "19-20")
+
+pCCBS_WI <- ggplot(AE_BMWE, aes(aEXPN, AREA, label = rownames(AE_BMWE))) +
+  geom_point(color = "red") + geom_text_repel()  +
+   ggtitle("Expansion and contraction CCBS, WI") +labs(y= "% Expansion ", x = "% Contraction") + theme_classic()
+
+
+
+###############################################################
+## BMCA
+
+AE_BMWE <- data.frame(aEXPN = 1, AREA = 1)
+
+ BMCA[[1]]$ID <- 1
+ BMCA[[2]]$ID <- 2
+ 
+ch <- stamp(BMCA[[1]], BMCA[[2]],direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[1,1] = (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[1,2] = (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMCA[[2]]$ID <- 1
+ BMCA[[3]]$ID <- 2
+ 
+ch <- stamp(BMCA[[2]], BMCA[[3]],direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[2,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[2,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMCA[[3]]$ID <- 1
+ BMCA[[4]]$ID <- 2
+ 
+ch <- stamp(BMCA[[3]], BMCA[[4]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[3,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[3,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+
+###
+ BMCA[[4]]$ID <- 1
+ BMCA[[5]]$ID <- 2
+ 
+ch <- stamp(BMCA[[4]], BMCA[[5]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[4,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[4,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMCA[[5]]$ID <- 1
+ BMCA[[6]]$ID <- 2
+ 
+ch <- stamp(BMCA[[5]], BMCA[[6]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[5,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[5,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMCA[[6]]$ID <- 1
+ BMCA[[7]]$ID <- 2
+ 
+ch <- stamp(BMCA[[6]], BMCA[[7]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[6,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[6,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMCA[[7]]$ID <- 1
+ BMCA[[8]]$ID <- 2
+ 
+ch <- stamp(BMCA[[7]], BMCA[[8]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[7,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[7,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMCA[[8]]$ID <- 1
+ BMCA[[9]]$ID <- 2
+ 
+ch <- stamp(BMCA[[8]], BMCA[[9]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[8,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[8,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMCA[[9]]$ID <- 1
+ BMCA[[10]]$ID <- 2
+ 
+ch <- stamp(BMCA[[9]], BMCA[[10]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[9,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[9,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+BMCA[[10]]$ID <- 1
+BMCA[[11]]$ID <- 2
+ 
+ch <- stamp(BMCA[[10]], BMCA[[11]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[10,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[10,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMCA[[11]]$ID <- 1
+ BMCA[[12]]$ID <- 2
+ 
+ch <- stamp(BMCA[[11]], BMCA[[12]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[11,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[11,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMCA[[12]]$ID <- 1
+ BMCA[[13]]$ID <- 2
+ 
+ch <- stamp(BMCA[[12]], BMCA[[13]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[12,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[12,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMCA[[13]]$ID <- 1
+ BMCA[[14]]$ID <- 2
+ 
+ch <- stamp(BMCA[[13]], BMCA[[14]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[13,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[13,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMCA[[14]]$ID <- 1
+ BMCA[[15]]$ID <- 2
+ 
+ch <- stamp(BMCA[[14]], BMCA[[15]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[14,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[14,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+rownames(AE_BMWE) = c("04-05", "05-06", "06-07", "07-08", "08-09", "09-10", "10-11", "11-12", "12-13", "13-14", "14-15", "15-16", "16-17", "17-18")
+
+pCCBS_CA <- ggplot(AE_BMWE, aes(aEXPN, AREA, label = rownames(AE_BMWE))) +
+  geom_point(color = "red") + geom_text_repel()  +
+   ggtitle("Expansion and contraction CCBS, CA") +labs(y= "% Expansion ", x = "% Contraction") + theme_classic()
+
+##################
+
+###############################################################
+## BMSU
+
+AE_BMWE <- data.frame(aEXPN = 1, AREA = 1)
+
+ BMSU[[1]]$ID <- 1
+ BMSU[[2]]$ID <- 2
+ 
+ch <- stamp(BMSU[[1]], BMSU[[2]],direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[1,1] = (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[1,2] = (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMSU[[2]]$ID <- 1
+ BMSU[[3]]$ID <- 2
+ 
+ch <- stamp(BMSU[[2]], BMSU[[3]],direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[2,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[2,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMSU[[3]]$ID <- 1
+ BMSU[[4]]$ID <- 2
+ 
+ch <- stamp(BMSU[[3]], BMSU[[4]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[3,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[3,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+
+###
+ BMSU[[4]]$ID <- 1
+ BMSU[[5]]$ID <- 2
+ 
+ch <- stamp(BMSU[[4]], BMSU[[5]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[4,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[4,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMSU[[5]]$ID <- 1
+ BMSU[[6]]$ID <- 2
+ 
+ch <- stamp(BMSU[[5]], BMSU[[6]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[5,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[5,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMSU[[6]]$ID <- 1
+ BMSU[[7]]$ID <- 2
+ 
+ch <- stamp(BMSU[[6]], BMSU[[7]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[6,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[6,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMSU[[7]]$ID <- 1
+ BMSU[[8]]$ID <- 2
+ 
+ch <- stamp(BMSU[[7]], BMSU[[8]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[7,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[7,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMSU[[8]]$ID <- 1
+ BMSU[[9]]$ID <- 2
+ 
+ch <- stamp(BMSU[[8]], BMSU[[9]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[8,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[8,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMSU[[9]]$ID <- 1
+ BMSU[[10]]$ID <- 2
+ 
+ch <- stamp(BMSU[[9]], BMSU[[10]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[9,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[9,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+BMSU[[10]]$ID <- 1
+BMSU[[11]]$ID <- 2
+ 
+ch <- stamp(BMSU[[10]], BMSU[[11]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[10,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[10,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMSU[[11]]$ID <- 1
+ BMSU[[12]]$ID <- 2
+ 
+ch <- stamp(BMSU[[11]], BMSU[[12]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[11,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[11,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMSU[[12]]$ID <- 1
+ BMSU[[13]]$ID <- 2
+ 
+ch <- stamp(BMSU[[12]], BMSU[[13]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[12,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[12,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMSU[[13]]$ID <- 1
+ BMSU[[14]]$ID <- 2
+ 
+ch <- stamp(BMSU[[13]], BMSU[[14]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[13,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[13,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMSU[[14]]$ID <- 1
+ BMSU[[15]]$ID <- 2
+ 
+ch <- stamp(BMSU[[14]], BMSU[[15]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[14,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[14,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+rownames(AE_BMWE) = c("04-05", "05-06", "06-07", "07-08", "08-09", "09-10", "10-11", "11-12", "12-13", "13-14", "14-15", "15-16", "16-17", "17-18")
+
+pCCBS_SU <- ggplot(AE_BMWE, aes(aEXPN, AREA, label = rownames(AE_BMWE))) +
+  geom_point(color = "red") + geom_text_repel()  +
+   ggtitle("Expansion and contraction CCBS, SU") +labs(y= "% Expansion ", x = "% Contraction") + theme_classic()
+
+##################
+
+###############################################################
+## BMRU
+
+AE_BMWE <- data.frame(aEXPN = 1, AREA = 1)
+
+ BMRU[[1]]$ID <- 1
+ BMRU[[2]]$ID <- 2
+ 
+ch <- stamp(BMRU[[1]], BMRU[[2]],direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[1,1] = (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[1,2] = (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMRU[[2]]$ID <- 1
+ BMRU[[3]]$ID <- 2
+ 
+ch <- stamp(BMRU[[2]], BMRU[[3]],direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[2,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[2,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMRU[[3]]$ID <- 1
+ BMRU[[4]]$ID <- 2
+ 
+ch <- stamp(BMRU[[3]], BMRU[[4]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[3,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[3,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+
+###
+ BMRU[[4]]$ID <- 1
+ BMRU[[5]]$ID <- 2
+ 
+ch <- stamp(BMRU[[4]], BMRU[[5]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[4,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[4,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMRU[[5]]$ID <- 1
+ BMRU[[6]]$ID <- 2
+ 
+ch <- stamp(BMRU[[5]], BMRU[[6]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[5,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[5,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMRU[[6]]$ID <- 1
+ BMRU[[7]]$ID <- 2
+ 
+ch <- stamp(BMRU[[6]], BMRU[[7]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[6,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[6,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMRU[[7]]$ID <- 1
+ BMRU[[8]]$ID <- 2
+ 
+ch <- stamp(BMRU[[7]], BMRU[[8]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[7,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[7,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMRU[[8]]$ID <- 1
+ BMRU[[9]]$ID <- 2
+ 
+ch <- stamp(BMRU[[8]], BMRU[[9]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[8,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[8,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMRU[[9]]$ID <- 1
+ BMRU[[10]]$ID <- 2
+ 
+ch <- stamp(BMRU[[9]], BMRU[[10]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[9,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[9,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+BMRU[[10]]$ID <- 1
+BMRU[[11]]$ID <- 2
+ 
+ch <- stamp(BMRU[[10]], BMRU[[11]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[10,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[10,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMRU[[11]]$ID <- 1
+ BMRU[[12]]$ID <- 2
+ 
+ch <- stamp(BMRU[[11]], BMRU[[12]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[11,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[11,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMRU[[12]]$ID <- 1
+ BMRU[[13]]$ID <- 2
+ 
+ch <- stamp(BMRU[[12]], BMRU[[13]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[12,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[12,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMRU[[13]]$ID <- 1
+ BMRU[[14]]$ID <- 2
+ 
+ch <- stamp(BMRU[[13]], BMRU[[14]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[13,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[13,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ BMRU[[14]]$ID <- 1
+ BMRU[[15]]$ID <- 2
+ 
+ch <- stamp(BMRU[[14]], BMRU[[15]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_BMWE[14,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_BMWE[14,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+rownames(AE_BMWE) = c("04-05", "05-06", "06-07", "07-08", "08-09", "09-10", "10-11", "11-12", "12-13", "13-14", "14-15", "15-16", "16-17", "17-18")
+
+pCCBS_RU <- ggplot(AE_BMWE, aes(aEXPN, AREA, label = rownames(AE_BMWE))) +
+  geom_point(color = "red") + geom_text_repel()  +
+   ggtitle("Expansion and contraction CCBS, RU") +labs(y= "% Expansion ", x = "% Contraction") + theme_classic()
+
+##################
+
+## Trend Roman
+## TRWI
+
+AE_TRWE <- data.frame(aEXPN = 1, AREA = 1)
+#TRWI[[1]]$ID <- 1
+#TRWI[[2]]$ID <- 2
+ 
+#ch <- stamp(TRWI[[1]], TRWI[[2]],direction = TRUE, distance = TRUE)
+#chSum <- stamp.group.summary(ch)
+#chSum <- chSum[chSum$nEVENTS > 1, ]
+
+#AE_TRWE[1,1] = (chSum$aEXPN / chSum$AREA) * 100
+#AE_TRWE[1,2] = (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRWI[[2]]$ID <- 1
+ TRWI[[3]]$ID <- 2
+ 
+ch <- stamp(TRWI[[2]], TRWI[[3]],direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[1,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[1,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRWI[[3]]$ID <- 1
+ TRWI[[4]]$ID <- 2
+ 
+ch <- stamp(TRWI[[3]], TRWI[[4]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[2,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[2,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRWI[[4]]$ID <- 1
+ TRWI[[5]]$ID <- 2
+ 
+ch <- stamp(TRWI[[4]], TRWI[[5]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[3,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[3,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRWI[[5]]$ID <- 1
+ TRWI[[6]]$ID <- 2
+ 
+ch <- stamp(TRWI[[5]], TRWI[[6]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[4,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[4,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRWI[[7]]$ID <- 1
+ TRWI[[8]]$ID <- 2
+ 
+ch <- stamp(TRWI[[7]], TRWI[[8]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[5,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[5,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRWI[[8]]$ID <- 1
+ TRWI[[9]]$ID <- 2
+ 
+ch <- stamp(TRWI[[8]], TRWI[[9]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[6,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[6,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRWI[[9]]$ID <- 1
+ TRWI[[10]]$ID <- 2
+ 
+ch <- stamp(TRWI[[9]], TRWI[[10]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[7,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[7,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRWI[[10]]$ID <- 1
+ TRWI[[11]]$ID <- 2
+ 
+ch <- stamp(TRWI[[10]], TRWI[[11]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[8,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[8,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRWI[[11]]$ID <- 1
+ TRWI[[12]]$ID <- 2
+ 
+ch <- stamp(TRWI[[11]], TRWI[[12]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[9,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[9,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRWI[[12]]$ID <- 1
+ TRWI[[13]]$ID <- 2
+ 
+ch <- stamp(TRWI[[12]], TRWI[[13]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[10,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[10,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+# TRWI[[13]]$ID <- 1
+# TRWI[[14]]$ID <- 2
+ 
+#ch <- stamp(TRWI[[13]], TRWI[[14]], direction = TRUE, distance = TRUE)
+#chSum <- stamp.group.summary(ch)
+#chSum <- chSum[chSum$nEVENTS > 1, ]
+
+#AE_TRWE[9,1] <- (chSum$aEXPN / chSum$AREA) * 100
+#AE_TRWE[9,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+# TRWI[[14]]$ID <- 1
+# TRWI[[15]]$ID <- 2
+ 
+#ch <- stamp(TRWI[[14]], TRWI[[15]], direction = TRUE, distance = TRUE)
+#chSum <- stamp.group.summary(ch)
+#chSum <- chSum[chSum$nEVENTS > 1, ]
+
+#AE_TRWE[10,1] <- (chSum$aEXPN / chSum$AREA) * 100
+#AE_TRWE[10,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+# TRWI[[15]]$ID <- 1
+# TRWI[[16]]$ID <- 2
+ 
+#ch <- stamp(TRWI[[15]], TRWI[[16]], direction = TRUE, distance = TRUE)
+#chSum <- stamp.group.summary(ch)
+#chSum <- chSum[chSum$nEVENTS > 1, ]
+
+#AE_TRWE[11,1] <- (chSum$aEXPN / chSum$AREA) * 100
+#AE_TRWE[11,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+# TRWI[[16]]$ID <- 1
+# TRWI[[17]]$ID <- 2
+ 
+#ch <- stamp(TRWI[[16]], TRWI[[17]], direction = TRUE, distance = TRUE)
+#chSum <- stamp.group.summary(ch)
+#chSum <- chSum[chSum$nEVENTS > 1, ]
+
+#AE_TRWE[12,1] <- (chSum$aEXPN / chSum$AREA) * 100
+#AE_TRWE[12,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+# TRWI[[17]]$ID <- 1
+# TRWI[[18]]$ID <- 2
+ 
+#ch <- stamp(TRWI[[17]], TRWI[[18]], direction = TRUE, distance = TRUE)
+#chSum <- stamp.group.summary(ch)
+#chSum <- chSum[chSum$nEVENTS > 1, ]
+
+#AE_TRWE[12,1] <- (chSum$aEXPN / chSum$AREA) * 100
+#AE_TRWE[12,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+
+rownames(AE_TRWE) = c("07-08", "08-09", "09-10", "10-11", "11-12", "12-13", "13-14", "14-15", "15-16", "16-17")
+
+pBKRQ_EW <- ggplot(AE_BMWE, aes(aEXPN, AREA, label = rownames(AE_BMWE))) +
+  geom_point(color = "red") + geom_text_repel()  +
+   ggtitle("Expansion and contraction BKRQ, EW") +labs(y= "% Expansion ", x = "% Contraction") + theme_classic()
+
+
+####
+################
+## TRCA
+
+AE_TRWE <- data.frame(aEXPN = 1, AREA = 1)
+
+#TRCA[[1]]$ID <- 1
+#TRCA[[2]]$ID <- 2
+ 
+#ch <- stamp(TRCA[[1]], TRCA[[2]],direction = TRUE, distance = TRUE)
+#chSum <- stamp.group.summary(ch)
+#chSum <- chSum[chSum$nEVENTS > 1, ]
+
+#AE_TRWE[1,1] = (chSum$aEXPN / chSum$AREA) * 100
+#AE_TRWE[1,2] = (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRCA[[2]]$ID <- 1
+ TRCA[[3]]$ID <- 2
+ 
+ch <- stamp(TRCA[[2]], TRCA[[3]],direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[1,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[1,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRCA[[3]]$ID <- 1
+ TRCA[[4]]$ID <- 2
+ 
+ch <- stamp(TRCA[[3]], TRCA[[4]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[2,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[2,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRCA[[4]]$ID <- 1
+ TRCA[[5]]$ID <- 2
+ 
+ch <- stamp(TRCA[[4]], TRCA[[5]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[3,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[3,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRCA[[5]]$ID <- 1
+ TRCA[[6]]$ID <- 2
+ 
+ch <- stamp(TRCA[[5]], TRCA[[6]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[4,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[4,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRCA[[7]]$ID <- 1
+ TRCA[[8]]$ID <- 2
+ 
+ch <- stamp(TRCA[[7]], TRCA[[8]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[5,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[5,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRCA[[8]]$ID <- 1
+ TRCA[[9]]$ID <- 2
+ 
+ch <- stamp(TRCA[[8]], TRCA[[9]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[6,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[6,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRCA[[9]]$ID <- 1
+ TRCA[[10]]$ID <- 2
+ 
+ch <- stamp(TRCA[[9]], TRCA[[10]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[7,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[7,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRCA[[10]]$ID <- 1
+ TRCA[[11]]$ID <- 2
+ 
+ch <- stamp(TRCA[[10]], TRCA[[11]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[8,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[8,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRCA[[11]]$ID <- 1
+ TRCA[[12]]$ID <- 2
+ 
+ch <- stamp(TRCA[[11]], TRCA[[12]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[9,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[9,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRCA[[12]]$ID <- 1
+ TRCA[[13]]$ID <- 2
+ 
+ch <- stamp(TRCA[[12]], TRCA[[13]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[10,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[10,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRCA[[13]]$ID <- 1
+ TRCA[[14]]$ID <- 2
+ 
+ch <- stamp(TRCA[[13]], TRCA[[14]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[11,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[11,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRCA[[14]]$ID <- 1
+ TRCA[[15]]$ID <- 2
+ 
+ch <- stamp(TRCA[[14]], TRCA[[15]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[12,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[12,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+#TRCA[[15]]$ID <- 1
+#TRCA[[16]]$ID <- 2
+ 
+#ch <- stamp(TRCA[[15]], TRCA[[16]], direction = TRUE, distance = TRUE)
+#chSum <- stamp.group.summary(ch)
+#chSum <- chSum[chSum$nEVENTS > 1, ]
+
+#AE_TRWE[13,1] <- (chSum$aEXPN / chSum$AREA) * 100
+#AE_TRWE[13,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+
+rownames(AE_BMWE) = c("06-07", "07-08", "08-09", "09-10", "10-11", "11-12", "12-13", "13-14", "14-15", "15-16", "16-17", "17-18", "18-19", "19-20")
+
+pBKRQ_CA <- ggplot(AE_BMWE, aes(aEXPN, AREA, label = rownames(AE_BMWE))) +
+  geom_point(color = "red") + geom_text_repel()  +
+   ggtitle("Expansion and contraction BKRQ, CA") +labs(y= "% Expansion ", x = "% Contraction") + theme_classic()
+
+####
+################
+## TRSU
+
+AE_TRWE <- data.frame(aEXPN = 1, AREA = 1)
+
+#TRSU[[1]]$ID <- 1
+#TRSU[[2]]$ID <- 2
+ 
+#ch <- stamp(TRSU[[1]], TRSU[[2]],direction = TRUE, distance = TRUE)
+#chSum <- stamp.group.summary(ch)
+#chSum <- chSum[chSum$nEVENTS > 1, ]
+
+#AE_TRWE[1,1] = (chSum$aEXPN / chSum$AREA) * 100
+#AE_TRWE[1,2] = (chSum$aCONT / chSum$AREA) * 100
+
+###
+# TRSU[[2]]$ID <- 1
+# TRSU[[3]]$ID <- 2
+ 
+#ch <- stamp(TRSU[[2]], TRSU[[3]],direction = TRUE, distance = TRUE)
+#chSum <- stamp.group.summary(ch)
+#chSum <- chSum[chSum$nEVENTS > 1, ]
+
+#AE_TRWE[1,1] <- (chSum$aEXPN / chSum$AREA) * 100
+#AE_TRWE[1,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRSU[[3]]$ID <- 1
+ TRSU[[4]]$ID <- 2
+ 
+ch <- stamp(TRSU[[3]], TRSU[[4]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[1,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[1,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRSU[[4]]$ID <- 1
+ TRSU[[5]]$ID <- 2
+ 
+ch <- stamp(TRSU[[4]], TRSU[[5]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[2,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[2,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRSU[[5]]$ID <- 1
+ TRSU[[6]]$ID <- 2
+ 
+ch <- stamp(TRSU[[5]], TRSU[[6]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[3,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[3,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRSU[[6]]$ID <- 1
+ TRSU[[7]]$ID <- 2
+ 
+ch <- stamp(TRSU[[5]], TRSU[[6]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[4,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[4,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRSU[[7]]$ID <- 1
+ TRSU[[8]]$ID <- 2
+ 
+ch <- stamp(TRSU[[7]], TRSU[[8]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[5,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[5,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRSU[[8]]$ID <- 1
+ TRSU[[9]]$ID <- 2
+ 
+ch <- stamp(TRSU[[8]], TRSU[[9]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[6,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[6,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRSU[[9]]$ID <- 1
+ TRSU[[10]]$ID <- 2
+ 
+ch <- stamp(TRSU[[9]], TRSU[[10]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[7,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[7,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRSU[[10]]$ID <- 1
+ TRSU[[11]]$ID <- 2
+ 
+ch <- stamp(TRSU[[10]], TRSU[[11]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[8,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[8,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRSU[[11]]$ID <- 1
+ TRSU[[12]]$ID <- 2
+ 
+ch <- stamp(TRSU[[11]], TRSU[[12]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[9,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[9,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRSU[[12]]$ID <- 1
+ TRSU[[13]]$ID <- 2
+ 
+ch <- stamp(TRSU[[12]], TRSU[[13]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[10,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[10,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRSU[[13]]$ID <- 1
+ TRSU[[14]]$ID <- 2
+ 
+ch <- stamp(TRSU[[13]], TRSU[[14]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[11,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[11,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRSU[[14]]$ID <- 1
+ TRSU[[15]]$ID <- 2
+ 
+ch <- stamp(TRSU[[14]], TRSU[[15]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[12,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[12,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+TRSU[[15]]$ID <- 1
+TRSU[[16]]$ID <- 2
+ 
+ch <- stamp(TRSU[[15]], TRSU[[16]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[13,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[13,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+
+rownames(AE_TRWE) = c("07-08", "08-09", "09-10", "10-11", "11-12", "12-13", "13-14", "14-15", "15-16", "16-17", "17-18", "18-19", "19-20")
+
+pBKRQ_SU <- ggplot(AE_BMWE, aes(aEXPN, AREA, label = rownames(AE_BMWE))) +
+  geom_point(color = "red") + geom_text_repel()  +
+   ggtitle("Expansion and contraction BKRQ, SU") +labs(y= "% Expansion ", x = "% Contraction") + theme_classic()
+
+
+
+###################
+## TRRU
+
+AE_TRWE <- data.frame(aEXPN = 1, AREA = 1)
+
+#TRRU[[1]]$ID <- 1
+#TRRU[[2]]$ID <- 2
+ 
+#ch <- stamp(TRRU[[1]], TRRU[[2]],direction = TRUE, distance = TRUE)
+#chSum <- stamp.group.summary(ch)
+#chSum <- chSum[chSum$nEVENTS > 1, ]
+
+#AE_TRWE[1,1] = (chSum$aEXPN / chSum$AREA) * 100
+#AE_TRWE[1,2] = (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRRU[[2]]$ID <- 1
+ TRRU[[3]]$ID <- 2
+ 
+ch <- stamp(TRRU[[2]], TRRU[[3]],direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[1,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[1,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRRU[[3]]$ID <- 1
+ TRRU[[4]]$ID <- 2
+ 
+ch <- stamp(TRRU[[3]], TRRU[[4]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[2,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[2,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRRU[[4]]$ID <- 1
+ TRRU[[5]]$ID <- 2
+ 
+ch <- stamp(TRRU[[4]], TRRU[[5]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[3,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[3,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRRU[[5]]$ID <- 1
+ TRRU[[6]]$ID <- 2
+ 
+ch <- stamp(TRRU[[5]], TRRU[[6]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[4,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[4,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRRU[[6]]$ID <- 1
+ TRRU[[7]]$ID <- 2
+ 
+ch <- stamp(TRRU[[5]], TRRU[[6]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[5,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[5,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRRU[[7]]$ID <- 1
+ TRRU[[8]]$ID <- 2
+ 
+ch <- stamp(TRRU[[7]], TRRU[[8]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[6,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[6,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRRU[[8]]$ID <- 1
+ TRRU[[9]]$ID <- 2
+ 
+ch <- stamp(TRRU[[8]], TRRU[[9]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[7,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[7,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRRU[[9]]$ID <- 1
+ TRRU[[10]]$ID <- 2
+ 
+ch <- stamp(TRRU[[9]], TRRU[[10]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[8,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[8,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRRU[[10]]$ID <- 1
+ TRRU[[11]]$ID <- 2
+ 
+ch <- stamp(TRRU[[10]], TRRU[[11]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[9,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[9,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRRU[[11]]$ID <- 1
+ TRRU[[12]]$ID <- 2
+ 
+ch <- stamp(TRRU[[11]], TRRU[[12]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[10,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[10,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRRU[[12]]$ID <- 1
+ TRRU[[13]]$ID <- 2
+ 
+ch <- stamp(TRRU[[12]], TRRU[[13]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[11,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[11,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRRU[[13]]$ID <- 1
+ TRRU[[14]]$ID <- 2
+ 
+ch <- stamp(TRRU[[13]], TRRU[[14]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[12,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[12,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+ TRRU[[14]]$ID <- 1
+ TRRU[[15]]$ID <- 2
+ 
+ch <- stamp(TRRU[[14]], TRRU[[15]], direction = TRUE, distance = TRUE)
+chSum <- stamp.group.summary(ch)
+chSum <- chSum[chSum$nEVENTS > 1, ]
+
+AE_TRWE[13,1] <- (chSum$aEXPN / chSum$AREA) * 100
+AE_TRWE[13,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+###
+#TRRU[[15]]$ID <- 1
+#TRRU[[16]]$ID <- 2
+ 
+#ch <- stamp(TRRU[[15]], TRRU[[16]], direction = TRUE, distance = TRUE)
+#chSum <- stamp.group.summary(ch)
+#chSum <- chSum[chSum$nEVENTS > 1, ]
+
+#AE_TRWE[14,1] <- (chSum$aEXPN / chSum$AREA) * 100
+#AE_TRWE[14,2] <- (chSum$aCONT / chSum$AREA) * 100
+
+
+rownames(AE_TRWE) = c("07-08", "08-09", "09-10", "10-11", "11-12", "12-13", "13-14", "14-15", "15-16", "16-17", "17-18", "18-19", "19-20")
+
+pBKRQ_RU <- ggplot(AE_BMWE, aes(aEXPN, AREA, label = rownames(AE_BMWE))) +
+  geom_point(color = "red") + geom_text_repel()  +
+   ggtitle("Expansion and contraction BKRQ, RU") +labs(y= "% Expansion ", x = "% Contraction") + theme_classic()
+
+ggsave(paste0(here("Plots"),"/pCCBS_EW.jpg"), plot = pCCBS_EW)
+ggsave(paste0(here("Plots"),"/pCCBS_MW.jpg"), plot = pCCBS_MW)
+ggsave(paste0(here("Plots"),"/pCCBS_LW.jpg"), plot = pCCBS_LW)
+ggsave(paste0(here("Plots"),"/pCCBS_CA.jpg"), plot = pCCBS_CA)
+ggsave(paste0(here("Plots"),"/pCCBS_SU.jpg"), plot = pCCBS_SU)
+ggsave(paste0(here("Plots"),"/pCCBS_RU.jpg"), plot = pCCBS_RU)
+
+ggsave(paste0(here("Plots"),"/pBKRQ_EW.jpg"), plot = pBKRQ_EW)
+ggsave(paste0(here("Plots"),"/pBKRQ_MW.jpg"), plot = pBKRQ_MW)
+ggsave(paste0(here("Plots"),"/pBKRQ_LW.jpg"), plot = pBKRQ_LW)
+ggsave(paste0(here("Plots"),"/pBKRQ_CA.jpg"), plot = pBKRQ_CA)
+ggsave(paste0(here("Plots"),"/pBKRQ_SU.jpg"), plot = pBKRQ_SU)
+ggsave(paste0(here("Plots"),"/pBKRQ_RU.jpg"), plot = pBKRQ_RU)
+```
+

@@ -1,0 +1,1044 @@
+---
+title: "Caribou_UD_MoveDistCalcs"
+author: "Mark Thompson"
+date: "2023-05-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Package loads
+
+
+```{r, echo = FALSE, include=FALSE}
+
+if(!require(adehabitatLT)){install.packages("adehabitatLT")}
+if(!require(adehabitatHR)){install.packages("adehabitatHR")}
+if(!require(stringr)){install.packages("stringr")}
+if(!require(rgdal)){install.packages("rgdal")}
+if(!require(here)){install.packages("here")}
+if(!require(terra)){install.packages("terra")}
+if(!require(stampr)){install.packages("stampr")}
+if(!require(sp)){install.packages("sp")}
+if(!require(sf)){install.packages("sf")}
+if(!require(tmap)){install.packages("tmap")}
+if(!require(viridisLite)){install.packages("viridisLite")}
+if(!require(quickPlot)){install.packages("quickPlot")}
+if(!require(ggplot2)){install.packages("ggplot2")}
+if(!require(gdistance)){install.packages("gdistance")}
+if(!require(geosphere)){install.packages("geosphere")}
+if(!require(dplyr)){install.packages("dplyr")}
+if(!require(FSA)){install.packages("FSA")}
+if(!require(movecost)){install.packages("movecost")}
+if(!require(patchwork)){install.packages("patchwork")}
+
+library(adehabitatLT)
+library(adehabitatHR)
+library(stringr)
+library(rgdal)
+library(here)
+library(terra)
+library(stampr)
+library(sp)
+library(sf)
+library(tmap)
+library(viridisLite)
+library(quickPlot)
+library(ggplot2)
+library(gdistance)
+library(geosphere)
+library(dplyr)
+library(FSA)
+library(movecost)
+library(patchwork)
+```
+
+## Individual centroids
+
+This code chunk calculates the centriod of the BRB homerange estimation for each individual within year and season. These centroids are subsequently used to calculate the individual BRB distance to the aggregate centroid, by season and by year. It takes a large amount of cpu time to load in the individual shapefiles.
+
+```{r , echo=FALSE, include = FALSE, message = FALSE, warning = FALSE, results = 'hide', fig.show = 'hide'}
+
+#Bullmoose
+BM_WI_BRBs <- list()
+Ind_BRB_UDdir <- gsub(".shp", "",dir(here("BRB_UDs"), pattern="^(BM_WI).{1,}(shp)"))
+
+
+for(i in 1:length(Ind_BRB_UDdir)){
+  name = Ind_BRB_UDdir[i]
+  BM_WI_BRBs[i] <- rgdal::readOGR(paste0(here("BRB_UDs"),"/"), name)
+  names(BM_WI_BRBs[i]) <- name
+}
+
+names(BM_WI_BRBs) <- substr(Ind_BRB_UDdir,7,45)
+years <- unique(substr(Ind_BRB_UDdir,7,10))
+count_years <- as.data.frame(substr(names(BM_WI_BRBs),1,4))
+
+
+centroidL <- list()
+centroidLn <- list()
+clc = 1
+
+for(i in 1:length(BM_WI_BRBs)){
+ for(y in 1:length(count_years[which(count_years == years[clc]),])){
+      tempv <- vect(BM_WI_BRBs[[clc]])  
+      centroidL[[clc]] <- st_centroid(st_as_sf(tempv))
+      centroidLn[clc] <- paste0(names(BM_WI_BRBs)[i],"_",y,"_centroid")
+      }
+  clc = clc + 1
+}
+
+BMBRB_centroidL <- centroidL
+BM_centroidLn <- unlist(centroidLn)
+names(BMBRB_centroidL) <- BM_centroidLn
+
+## Roman
+TR_WI_BRBs <- list()
+Ind_BRB_UDdir <- gsub(".shp", "",dir(here("BRB_UDs"), pattern="^(TR_WI).{1,}(shp)"))
+
+
+for(i in 1:length(Ind_BRB_UDdir)){
+  name = Ind_BRB_UDdir[i]
+  TR_WI_BRBs[i] <- rgdal::readOGR(paste0(here("BRB_UDs"),"/"), name)
+  names(TR_WI_BRBs[i]) <- name
+}
+
+names(TR_WI_BRBs) <- substr(Ind_BRB_UDdir,7,45)
+years <- unique(substr(Ind_BRB_UDdir,7,10))
+count_years <- as.data.frame(substr(names(TR_WI_BRBs),1,4))
+
+
+centroidL <- list()
+centroidLn <- list()
+clc = 1
+
+for(i in 1:length(TR_WI_BRBs)){
+ for(y in 1:length(count_years[which(count_years == years[clc]),])){
+      tempv <- vect(TR_WI_BRBs[[clc]])  
+      centroidL[[clc]] <- st_centroid(st_as_sf(tempv))
+      centroidLn[clc] <- paste0(names(TR_WI_BRBs)[i],"_",y,"_centroid")
+      }
+  clc = clc + 1
+}
+
+TRBRB_centroidL <- centroidL
+TR_centroidLn <- unlist(centroidLn)
+names(TRBRB_centroidL) <- TR_centroidLn
+```
+
+## Distance calculation - Simple linear "as the crow flies"
+
+Simple Euclidean linear distances are calculated here for winter data only. Winter BRB centroids are used to calculate aggregate centroid distances. TRBRB_centroidL is the BRB-UD, TRcentroidL is the aggregrate UD - subsetted by winter TRWI_Centroids and then by matching year of the BRB data into WIYR_Centroid.
+
+```{r echo=FALSE}
+
+## Trend Roman
+TRWI_Centroids <- subset(TRcentroidL, subset = substr(names(TRcentroidL),3,4) == "WI")
+Years <- substr(names(TRBRB_centroidL),1,4)
+TRcdist <- data.frame()
+
+for(i in 1:length(TRBRB_centroidL)){
+    WIYR_Centroid <- subset(TRWI_Centroids, subset = substr(names(TRWI_Centroids),6,9) == Years[i])
+    dpoints <- rbind(c(as.numeric(st_coordinates(TRBRB_centroidL[[i]]))),as.numeric(st_coordinates(WIYR_Centroid[[1]])))
+    TRcdist[i,1] <- pointDistance(dpoints, lonlat=FALSE)[2,1]
+    TRcdist[i,2] <- names(TRBRB_centroidL[i])
+}
+
+TRcdist$Years <- Years
+
+## Bullmoose
+
+BMWI_Centroids <- subset(BMcentroidL, subset = substr(names(BMcentroidL),3,4) == "WI")
+Years <- substr(names(BMBRB_centroidL),1,4)
+BMcdist <- data.frame()
+
+for(i in 1:length(BMBRB_centroidL)){
+    WIYR_Centroid <- subset(BMWI_Centroids, subset = substr(names(BMWI_Centroids),6,9) == Years[i])
+    dpoints <- rbind(c(as.numeric(st_coordinates(BMBRB_centroidL[[i]]))),as.numeric(st_coordinates(WIYR_Centroid[[1]])))
+    BMcdist[i,1] <- pointDistance(dpoints, lonlat=FALSE)[2,1]
+    BMcdist[i,2] <- names(BMBRB_centroidL[i])
+}
+
+BMcdist$Years <- Years
+BMcdist$SA <- "BM"
+TRcdist$SA <- "TR"
+
+Cent2Cent <- rbind(BMcdist,TRcdist)
+Cent2Cent$season <- "WI"
+Cent2Cent[,2] <- substr(Cent2Cent[,2],6,45)
+Cent2Cent[,2] <- gsub("_centroid","" ,Cent2Cent[,2])
+colnames(Cent2Cent) <- (c("Dist.m", "AnimalID","Year","SA", "season"))
+
+write.csv(Cent2Cent, file = paste0(here("Tables"),"/CentDistEuclidian.csv"))
+Cent2CentL <- read.csv(paste0(here("Tables"), "/CentDistEuclidian.csv"), stringsAsFactors = FALSE)
+
+Cent2CentL$Yeard <-  as.Date(ISOdate(Cent2CentL$Year,1,1))
+Cent2CentL$Year <- format(as.Date(Cent2CentL$Yeard, format="%Y-%m-%d"),"%Y")
+
+C2CL = ggplot() + 
+  geom_point(data = Cent2CentL, aes(color = SA, x = Yeard, y = Dist.m),size=2) +
+  scale_x_date(date_labels="%Y",date_breaks  ="1 year") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10, face="bold")) + labs(title="Individual Animal Distances to Seasonal Centroid", xlab="Year", ylab="Distance (m)")
+
+C2CL_summary = FSA::Summarize(Dist.m ~ Year + SA, data=Cent2CentL)
+C2CL_summary$se = C2CL_summary$sd / sqrt(C2CL_summary$n)
+C2CL_summary$Yeard <-  as.Date(ISOdate(C2CL_summary$Year,1,1))
+
+pd = position_dodge(.4)    ### How much to jitter the points on the plot
+C2CL2 =  ggplot(C2CL_summary, aes(x = Year, y = mean, color = SA)) +
+        geom_point(shape = 16, size  = 2, position = pd) +
+        geom_errorbar(aes(ymin  = mean - se, ymax  = mean + se), width = 0.2, size  = 0.3, position = pd) +
+        theme_bw() + theme(axis.title = element_text(face = "bold")) + ylab("Distance (m)") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10, face="bold")) + scale_color_manual(values=c("red", "blue")) +
+   ggtitle("A") + ylim(0,30000) + theme(legend.position = "none")
+
+
+#Distmat <- rbind(c(as.numeric(st_coordinates(TRBRB_centroidL[[1]]))),as.numeric(st_coordinates(TRcentroidL[[1]])))
+
+#pointDistance(Distmat, lonlat=FALSE)
+
+
+            
+
+```
+
+#Alos Polsar DEM - Movecost distance approach
+
+Distance calculations using Alos Polsar (12.5 DEM, scanned June 2006).
+
+```{r echo=FALSE}
+
+DEM <- rast(paste0(here("Input Data"),"/ALOS_DEM_FULL.tif"))
+DEM <- terra::project(DEM, "EPSG:32610")
+
+## Trim the rDEMs to the extents of the points
+
+#########
+## Roman
+#########
+#> max(Caribou_sp_TR_WI$N)
+#[1] 6110269
+#> max(Caribou_sp_TR_WI$E)
+#[1] 674942.5
+#> min(Caribou_sp_TR_WI$N)
+#[1] 6058931
+#> min(Caribou_sp_TR_WI$E)
+#[1] 585729.5
+
+ext_TR <- ext(c(585730, 674943, 6058932, 6110270))
+DEM_TR <- crop(DEM, ext_TR)
+
+DEM_TR_slope <- terrain(DEM_TR, v="slope", neighbors=8, filename=paste0(here("Spatial Data"),"/","Alos_Slope_TR.tif"), overwrite=TRUE)
+DEM_TR_slope <- raster(paste0(here("Spatial Data"),"/","Alos_Slope_TR.tif"))
+
+DEM_TR_tr <- transition(DEM_TR_slope, median, 16, symm=FALSE) ## asymetric transition layer.
+saveRDS(DEM_TR_tr, paste0(here("Output Data"),"/DEM_TR_tr.rds"))
+
+DEM_DEM_TR_gctr <- geoCorrection(DEM_TR_tr, type="c")
+
+## https://stackoverflow.com/questions/35347854/export-transition-layers-from-r
+saveRDS(DEM_DEM_TR_gctr, paste0(here("Spatial Data"),"/","DEM_DEM_TR_gctr.tif"))
+DEM_DEM_TR_gctr <- readRDS(paste0(here("Spatial Data"),"/","DEM_DEM_TR_gctr.tif"))
+
+TRWI_Centroids <- subset(TRcentroidL, subset = substr(names(TRcentroidL),3,4) == "WI")
+Years <- substr(names(TRBRB_centroidL),1,4)
+Years <- Years[c(1:64)] # Year 2020 is not in this set, manually removing it here
+TRcdist <- data.frame()
+AtoB_TR <- list()
+
+## This throws an error if you run it as a chunk, but separately it works fine. I believe it is a memory issue? The code is fine.
+
+## Issue starts with i = 37, 42 -> "Error in as.igraph.vs(graph, from) : Invalid vertex name(s)". The extent of the DEM did not fully cover the extent of the centroids, so an additional Alos Polsar tile was downloaded, merged, and cropped to cover the full extent.
+
+for(i in 1:length(TRBRB_centroidL)){
+    WIYR_Centroid <- subset(TRWI_Centroids, subset = substr(names(TRWI_Centroids),6,9) == Years[i])
+    d1 <- vect(WIYR_Centroid[[1]])
+    crs(d1) <- "EPSG:32610"
+    d1 <- terra::project(d1, "EPSG:32610")
+    d1 <- as(d1, "Spatial")
+    o1 <- vect(TRBRB_centroidL[[i]])
+    crs(o1) <- "EPSG:32610"
+    o1 <- terra::project(o1, "EPSG:32610")
+    o1 <- as(o1, "Spatial")
+    AtoB_TR[i] <- shortestPath(DEM_DEM_TR_gctr, o1, d1, output="SpatialLines")
+    TRcdist[i,1] <- rgeos::gLength(AtoB_TR[[i]])
+    TRcdist[i,2] <- names(TRBRB_centroidL[i])
+}
+
+TRcdist$Years <- Years
+TRcdist$SA <- "TR"
+write.csv(TRcdist, file = paste0(here("Tables"),"/DEM_TR_med_dist_Slope_DEM.csv"))
+
+## Roman UD centroids - year  through the slope DEM - Winter only
+
+centroidL <- list()
+centroidLn <- list()
+clc = 1
+dcnt = 1
+TRUDdist <- data.frame()
+AtoB_TR <- list()
+
+for(i in 1:length(TR_sUDsn[1])){
+    for(y in 1:length(TR_sUDs[[i]])){
+      #assign(paste0(TR_sUDsn[i],y,"_centroid"),assign(paste0(TR_sUDsn[i],y),st_centroid(st_as_sf(TR_sUDs[[i]][[y]]))))
+      centroidL[[clc]] <- st_centroid(st_as_sf(TR_sUDs[[i]][[y]]))
+      centroidLn[clc] <- paste0(TR_sUDsn[i],"_",substr(names(TR_sUDs[[i]][y]),8,11),"_centroid")
+      
+      if(clc > 1){
+        d1 <- vect(centroidL[[clc]])
+        crs(d1) <- "EPSG:32610"
+        d1 <- terra::project(d1, "EPSG:32610")
+        d1 <- as(d1, "Spatial")
+        o1 <- vect(centroidL[[clc-1]])
+        crs(o1) <- "EPSG:32610"
+        o1 <- terra::project(o1, "EPSG:32610")
+        o1 <- as(o1, "Spatial")
+        AtoB_TR[dcnt] <- shortestPath(DEM_DEM_TR_gctr, o1, d1, output="SpatialLines")
+        TRUDdist[dcnt,1] <- rgeos::gLength(AtoB_TR[[dcnt]])
+        TRUDdist[dcnt,2] <- paste0(centroidLn[clc-1],"_to_",centroidLn[clc])
+        dcnt = dcnt + 1
+        clc = clc + 1
+      }
+      else{clc = clc + 1}
+    }
+}
+
+colnames(TRUDdist) <- c("dist.m","UDs")
+write.csv(TRUDdist, file = paste0(here("Tables"),"/DEM_TRUDsCentDistSlope.csv"))
+
+## Bullmoose
+#> max(Caribou_sp_BM_WI$N)
+#[1] 6236521
+#> max(Caribou_sp_BM_WI$E)
+#[1] 633400.8
+#> min(Caribou_sp_BM_WI$N)
+#[1] 6056836
+#> min(Caribou_sp_BM_WI$E)
+#[1] 548112.1
+
+ext_BM <- ext(c(548113, 633401, 6056837, 6236522))
+DEM_BM <- crop(DEM, ext_BM)
+
+DEM_BM_slope <- terrain(DEM_BM, v="slope", neighbors=8, filename=paste0(here("Spatial Data"),"/","DEM_Slope_BM.tif"), overwrite=TRUE)
+DEM_BM_slope <- raster(paste0(here("Spatial Data"),"/","DEM_Slope_BM.tif"))
+
+DEM_BM_tr <- transition(DEM_BM_slope, median, 16, symm=FALSE) ## asymetric transition layer.
+DEM_DEM_BM_gctr <- geoCorrection(DEM_BM_tr, type="c")
+
+## https://stackoverflow.com/questions/35347854/export-transition-layers-from-r
+saveRDS(DEM_DEM_BM_gctr, paste0(here("Spatial Data"),"/","DEM_DEM_BM_gctr.tif"))
+DEM_DEM_BM_gctr <- readRDS(paste0(here("Spatial Data"),"/","DEM_DEM_BM_gctr.tif"))
+
+centroidL <- list()
+centroidLn <- list()
+clc = 1
+dcnt = 1
+BMUDdist <- data.frame()
+AtoB_BM <- list()
+
+for(i in 1:length(BM_sUDsn[1])){
+    for(y in 1:length(BM_sUDs[[i]])){
+      #assign(paste0(BM_sUDsn[i],y,"_centroid"),assign(paste0(BM_sUDsn[i],y),st_centroid(st_as_sf(BM_sUDs[[i]][[y]]))))
+      centroidL[[clc]] <- st_centroid(st_as_sf(BM_sUDs[[i]][[y]]))
+      centroidLn[clc] <- paste0(BM_sUDsn[i],"_",substr(names(BM_sUDs[[i]][y]),8,11),"_centroid")
+      
+      if(clc > 1){
+        d1 <- vect(centroidL[[clc]])
+        crs(d1) <- "EPSG:32610"
+        d1 <- terra::project(d1, "EPSG:32610")
+        d1 <- as(d1, "Spatial")
+        o1 <- vect(centroidL[[clc-1]])
+        crs(o1) <- "EPSG:32610"
+        o1 <- terra::project(o1, "EPSG:32610")
+        o1 <- as(o1, "Spatial")
+        AtoB_BM[dcnt] <- shortestPath(DEM_DEM_BM_gctr, o1, d1, output="SpatialLines")
+        BMUDdist[dcnt,1] <- rgeos::gLength(AtoB_BM[[dcnt]])
+        BMUDdist[dcnt,2] <- names(BMBRB_centroidL[dcnt])
+        dcnt = dcnt + 1
+      }
+      
+      clc = clc + 1
+    }
+}
+
+colnames(BMUDdist) <- c("dist.m","UDs")
+write.csv(BMUDdist, file = paste0(here("Tables"),"/DEM_BMUDsCentDistSlope.csv"))
+
+## https://stackoverflow.com/questions/35347854/export-transition-layers-from-r
+saveRDS(DEM_DEM_BM_gctr, paste0(here("Spatial Data"),"/","DEM_DEM_BM_gctr.tif"))
+DEM_DEM_BM_gctr <- readRDS(paste0(here("Spatial Data"),"/","DEM_DEM_BM_gctr.tif"))
+
+BMWI_Centroids <- subset(BMcentroidL, subset = substr(names(BMcentroidL),3,4) == "WI")
+Years <- substr(names(BMBRB_centroidL),1,4)
+BMcdist <- data.frame()
+
+for(i in 1:length(BMBRB_centroidL)){
+    WIYR_Centroid <- subset(BMWI_Centroids, subset = substr(names(BMWI_Centroids),6,9) == Years[i])
+    d1 <- vect(WIYR_Centroid[[1]])
+    crs(d1) <- "EPSG:32610"
+    d1 <- terra::project(d1, "EPSG:32610")
+    d1 <- as(d1, "Spatial")
+    o1 <- vect(BMBRB_centroidL[[i]])
+    crs(o1) <- "EPSG:32610"
+    o1 <- terra::project(o1, "EPSG:32610")
+    o1 <- as(o1, "Spatial")
+    AtoB <- shortestPath(DEM_DEM_BM_gctr, o1, d1, output="SpatialLines")
+    BMcdist[i,1] <- rgeos::gLength(AtoB)
+    BMcdist[i,2] <- names(BMBRB_centroidL[i])
+}
+
+BMcdist$Years <- Years
+BMcdist$SA <- "BM"
+write.csv(BMcdist, file = paste0(here("Tables"),"/DEM_BM_med_dist_Slope.csv"))
+
+TRcdist <- read.csv(paste0(here("Tables"), "/DEM_TR_med_dist_Slope.csv"), stringsAsFactors = FALSE)
+BMcdist <- read.csv(paste0(here("Tables"), "/DEM_BM_med_dist_Slope.csv"), stringsAsFactors = FALSE)
+
+
+BMcdist <- BMcdist[,c(2:5)]
+TRcdist <- TRcdist[,c(3:6)]
+
+Cent2Cent <- rbind(BMcdist,TRcdist)
+Cent2Cent$season <- "WI"
+Cent2Cent[,2] <- gsub("_\\d_centroid","" ,Cent2Cent[,2])
+Cent2Cent[,2] <- substr(Cent2Cent[,2],6,45)
+
+colnames(Cent2Cent) <- c("Dist.m", "AnimalID","Year","SA", "season")
+
+write.csv(Cent2Cent, file = paste0(here("Tables"),"/CentDist_Slope.csv"))
+Cent2Cent <- read.csv(paste0(here("Tables"), "/CentDist_Slope.csv"), stringsAsFactors = FALSE)
+Cent2Cent <- Cent2Cent[,c(2:6)]
+
+Cent2Cent[which(Cent2Cent$SA == "BM"),4] <- "Bullmoose"
+Cent2Cent[which(Cent2Cent$SA == "TR"),4] <- "Roman"
+Cent2Cent$Yeard <-  as.Date(ISOdate(Cent2Cent$Year,1,1))
+Cent2Cent$Year <- format(as.Date(Cent2Cent$Yeard, format="%Y-%m-%d"),"%Y")
+
+C2C = ggplot() + 
+  geom_point(data = Cent2Cent, aes(color = SA, x = Yeard, y = Dist.m),size=2) +
+  scale_x_date(date_labels="%Y",date_breaks  ="1 year") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10, face="bold")) + labs(title="Individual Animal Distances to Seasonal Centroid", xlab="Year", ylab="Distance (m)")
+
+C2C_summary = FSA::Summarize(Dist.m ~ Year + SA, data=Cent2Cent)
+C2C_summary$se = C2C_summary$sd / sqrt(C2C_summary$n)
+C2C_summary$Yeard <-  as.Date(ISOdate(C2C_summary$Year,1,1))
+
+pd = position_dodge(.4)    ### How much to jitter the points on the plot
+C2C2 =  ggplot(C2C_summary, aes(x = Year, y = mean, color = SA)) +
+        geom_point(shape = 16, size  = 2, position = pd) +
+        geom_errorbar(aes(ymin  = mean - se, ymax  = mean + se), width = 0.2, size  = 0.3, position = pd) +
+        theme_bw() + theme(axis.title = element_text(face = "bold")) + ylab("Distance (m)") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10, face="bold")) + scale_color_manual(values=c("red", "blue"))  + ylim(0,32000)
+
+
+
+C2CL2 + C2C2 ## Patchwork
+
+```
+
+#Movecost distance approach
+Using Aster V3 as the DTM
+
+#### Attempted gdistance package approach
+## https://cran.r-project.org/web/packages/gdistance/index.html?fbclid=IwAR3Gb0vuKpeXL-ye95FbSn6IKM8jWTlUweM-fqYXKk-PztYDo4xIDs5hxJk)
+##Using gdistance package:
+## https://agrdatasci.github.io/gdistance/articles/Overview.html
+
+####
+#altDiff <- function(x){x[2] - x[1]}  ## Difference in height between cells.
+#Astertr <- transition(raster(Aster), altDiff, 8, symm=FALSE) ## asymetric transition layer.
+#Aster_gctr <- geoCorrection(Astertr, type="r", multpl=FALSE, scl=TRUE)
+#rSPDistance(Roughrtr, sP, sP, theta=1e-12, totalNet="total")
+###
+
+The altDiff function did not work - created negative transition values. Hence, a median 16 queen approach was adopted with shortestPath() https://agrdatasci.github.io/gdistance/reference/shortestPath.html - calls to igraph graph.adjacency (see: https://github.com/AgrDataSci/gdistance/blob/4e87514bec102472225b03735417f9362b282bfc/R/shortestPath.R)
+
+## Raster Hijimans approach
+### See https://stackoverflow.com/questions/67376471/calculating-the-distance-from-points-and-the-closest-raster-cell-of-a-certain-va
+#out <- list()
+#for (i in 1:nrow(Distmat)) {
+#    d <- distanceFromPoints(raster(Aster_rough), Distmat[i,,drop=F])
+#    out[[i]] <- zonal(d, Aster_rough, min)[,2]
+#}
+#a <- do.call(rbind, out)
+#
+#b <- cbind(x, y, id=1:2, a)
+#colnames(b)[4:7] <- paste0("dcat", 1:2)
+
+
+```{r echo=FALSE}
+
+Aster <- rast(paste0(here("Spatial Data"),"/","ASTER_GDEM_V3.tif"))
+Aster <- terra::project(Aster, "EPSG:32610")
+
+## Trim the rasters to the extents of the points
+
+#########
+## Roman
+#########
+#> max(Caribou_sp_TR_WI$N)
+#[1] 6110269
+#> max(Caribou_sp_TR_WI$E)
+#[1] 674942.5
+#> min(Caribou_sp_TR_WI$N)
+#[1] 6058931
+#> min(Caribou_sp_TR_WI$E)
+#[1] 585729.5
+
+ext_TR <- ext(c(585730, 674943, 6058932, 6110270))
+Aster_TR <- crop(Aster, ext_TR)
+
+Aster_TR_slope <- terrain(Aster_TR, v="slope", neighbors=8, filename=paste0(here("Spatial Data"),"/","Slope_TR.tif"), overwrite=TRUE)
+Aster_TR_slope <- raster(paste0(here("Spatial Data"),"/","Slope_TR.tif"))
+
+Aster_TR_tr <- transition(Aster_TR_slope, median, 16, symm=FALSE) ## asymetric transition layer.
+Aster_Aster_TR_gctr <- geoCorrection(Aster_TR_tr, type="c")
+
+## https://stackoverflow.com/questions/35347854/export-transition-layers-from-r
+saveRDS(Aster_Aster_TR_gctr, paste0(here("Spatial Data"),"/","Aster_Aster_TR_gctr.tif"))
+Aster_Aster_TR_gctr <- readRDS(paste0(here("Spatial Data"),"/","Aster_Aster_TR_gctr.tif"))
+
+TRWI_Centroids <- subset(TRcentroidL, subset = substr(names(TRcentroidL),3,4) == "WI")
+Years <- substr(names(TRBRB_centroidL),1,4)
+Years <- Years[c(1:64)] # Year 2020 is not in this set, manually removing it here
+TRcdist <- data.frame()
+AtoB_TR <- list()
+
+## This throws an error if you run it as a chunk, but separately it works fine. I believe it is a memory issue? The code is fine.
+
+for(i in 1:length(TRBRB_centroidL)){
+    WIYR_Centroid <- subset(TRWI_Centroids, subset = substr(names(TRWI_Centroids),6,9) == Years[i])
+    d1 <- vect(WIYR_Centroid[[1]])
+    crs(d1) <- "EPSG:32610"
+    d1 <- terra::project(d1, "EPSG:32610")
+    d1 <- as(d1, "Spatial")
+    o1 <- vect(TRBRB_centroidL[[i]])
+    crs(o1) <- "EPSG:32610"
+    o1 <- terra::project(o1, "EPSG:32610")
+    o1 <- as(o1, "Spatial")
+    AtoB_TR[i] <- shortestPath(Aster_Aster_TR_gctr, o1, d1, output="SpatialLines")
+    TRcdist[i,1] <- rgeos::gLength(AtoB_TR[[i]])
+    TRcdist[i,2] <- names(TRBRB_centroidL[i])
+}
+
+TRcdist$Years <- Years
+TRcdist$SA <- "TR"
+write.csv(TRcdist, file = paste0(here("Tables"),"/TR_med_dist_Slope.csv"))
+
+## Roman UD centroids - year  through the slope DEM - Winter only
+
+centroidL <- list()
+centroidLn <- list()
+clc = 1
+dcnt = 1
+TRUDdist <- data.frame()
+AtoB_TR <- list()
+
+for(i in 1:length(TR_sUDsn[1])){
+    for(y in 1:length(TR_sUDs[[i]])){
+      #assign(paste0(TR_sUDsn[i],y,"_centroid"),assign(paste0(TR_sUDsn[i],y),st_centroid(st_as_sf(TR_sUDs[[i]][[y]]))))
+      centroidL[[clc]] <- st_centroid(st_as_sf(TR_sUDs[[i]][[y]]))
+      centroidLn[clc] <- paste0(TR_sUDsn[i],"_",substr(names(TR_sUDs[[i]][y]),8,11),"_centroid")
+      
+      if(clc > 1){
+        d1 <- vect(centroidL[[clc]])
+        crs(d1) <- "EPSG:32610"
+        d1 <- terra::project(d1, "EPSG:32610")
+        d1 <- as(d1, "Spatial")
+        o1 <- vect(centroidL[[clc-1]])
+        crs(o1) <- "EPSG:32610"
+        o1 <- terra::project(o1, "EPSG:32610")
+        o1 <- as(o1, "Spatial")
+        AtoB_TR[dcnt] <- shortestPath(Aster_Aster_TR_gctr, o1, d1, output="SpatialLines")
+        TRUDdist[dcnt,1] <- rgeos::gLength(AtoB_TR[[dcnt]])
+        TRUDdist[dcnt,2] <- paste0(centroidLn[clc-1],"_to_",centroidLn[clc])
+        dcnt = dcnt + 1
+        clc = clc + 1
+      }
+      else{clc = clc + 1}
+    }
+}
+
+colnames(TRUDdist) <- c("dist.m","UDs")
+write.csv(TRUDdist, file = paste0(here("Tables"),"/TRUDsCentDistSlope.csv"))
+
+## Bullmoose
+#> max(Caribou_sp_BM_WI$N)
+#[1] 6236521
+#> max(Caribou_sp_BM_WI$E)
+#[1] 633400.8
+#> min(Caribou_sp_BM_WI$N)
+#[1] 6056836
+#> min(Caribou_sp_BM_WI$E)
+#[1] 548112.1
+
+ext_BM <- ext(c(548113, 633401, 6056837, 6236522))
+Aster_BM <- crop(Aster, ext_BM)
+
+Aster_BM_slope <- terrain(Aster_BM, v="slope", neighbors=8, filename=paste0(here("Spatial Data"),"/","Slope_BM.tif"), overwrite=BMUE)
+Aster_BM_slope <- raster(paste0(here("Spatial Data"),"/","Slope_BM.tif"))
+
+Aster_BM_tr <- transition(Aster_BM_slope, median, 16, symm=FALSE) ## asymetric transition layer.
+Aster_Aster_BM_gctr <- geoCorrection(Aster_BM_tr, type="c")
+
+## https://stackoverflow.com/questions/35347854/export-transition-layers-from-r
+saveRDS(Aster_Aster_BM_gctr, paste0(here("Spatial Data"),"/","Aster_Aster_BM_gctr.tif"))
+Aster_Aster_BM_gctr <- readRDS(paste0(here("Spatial Data"),"/","Aster_Aster_BM_gctr.tif"))
+
+centroidL <- list()
+centroidLn <- list()
+clc = 1
+dcnt = 1
+BMUDdist <- data.frame()
+AtoB_BM <- list()
+
+for(i in 1:length(BM_sUDsn[1])){
+    for(y in 1:length(BM_sUDs[[i]])){
+      #assign(paste0(BM_sUDsn[i],y,"_centroid"),assign(paste0(BM_sUDsn[i],y),st_centroid(st_as_sf(BM_sUDs[[i]][[y]]))))
+      centroidL[[clc]] <- st_centroid(st_as_sf(BM_sUDs[[i]][[y]]))
+      centroidLn[clc] <- paste0(BM_sUDsn[i],"_",substr(names(BM_sUDs[[i]][y]),8,11),"_centroid")
+      
+      if(clc > 1){
+        d1 <- vect(centroidL[[clc]])
+        crs(d1) <- "EPSG:32610"
+        d1 <- terra::project(d1, "EPSG:32610")
+        d1 <- as(d1, "Spatial")
+        o1 <- vect(centroidL[[clc-1]])
+        crs(o1) <- "EPSG:32610"
+        o1 <- terra::project(o1, "EPSG:32610")
+        o1 <- as(o1, "Spatial")
+        AtoB_BM[dcnt] <- shortestPath(Aster_Aster_BM_gctr, o1, d1, output="SpatialLines")
+        BMUDdist[dcnt,1] <- rgeos::gLength(AtoB_BM[[dcnt]])
+        BMUDdist[dcnt,2] <- names(BMBRB_centroidL[dcnt])
+        dcnt = dcnt + 1
+      }
+      
+      clc = clc + 1
+    }
+}
+
+colnames(BMUDdist) <- c("dist.m","UDs")
+write.csv(BMUDdist, file = paste0(here("Tables"),"/BMUDsCentDistSlope.csv"))
+
+## https://stackoverflow.com/questions/35347854/export-transition-layers-from-r
+saveRDS(Aster_Aster_BM_gctr, paste0(here("Spatial Data"),"/","Aster_Aster_BM_gctr.tif"))
+Aster_Aster_BM_gctr <- readRDS(paste0(here("Spatial Data"),"/","Aster_Aster_BM_gctr.tif"))
+
+BMWI_Centroids <- subset(BMcentroidL, subset = substr(names(BMcentroidL),3,4) == "WI")
+Years <- substr(names(BMBRB_centroidL),1,4)
+BMcdist <- data.frame()
+
+for(i in 1:length(BMBRB_centroidL)){
+    WIYR_Centroid <- subset(BMWI_Centroids, subset = substr(names(BMWI_Centroids),6,9) == Years[i])
+    d1 <- vect(WIYR_Centroid[[1]])
+    crs(d1) <- "EPSG:32610"
+    d1 <- terra::project(d1, "EPSG:32610")
+    d1 <- as(d1, "Spatial")
+    o1 <- vect(BMBRB_centroidL[[i]])
+    crs(o1) <- "EPSG:32610"
+    o1 <- terra::project(o1, "EPSG:32610")
+    o1 <- as(o1, "Spatial")
+    AtoB <- shortestPath(Aster_Aster_BM_gctr, o1, d1, output="SpatialLines")
+    BMcdist[i,1] <- rgeos::gLength(AtoB)
+    BMcdist[i,2] <- names(BMBRB_centroidL[i])
+}
+
+BMcdist$Years <- Years
+BMcdist$SA <- "BM"
+write.csv(BMcdist, file = paste0(here("Tables"),"/BM_med_dist_Slope.csv"))
+
+TRcdist <- read.csv(paste0(here("Tables"), "/TR_med_dist_Slope.csv"), stringsAsFactors = FALSE)
+BMcdist <- read.csv(paste0(here("Tables"), "/BM_med_dist_Slope.csv"), stringsAsFactors = FALSE)
+
+
+BMcdist <- BMcdist[,c(2:5)]
+TRcdist <- TRcdist[,c(3:6)]
+
+Cent2Cent <- rbind(BMcdist,TRcdist)
+Cent2Cent$season <- "WI"
+Cent2Cent[,2] <- gsub("_\\d_centroid","" ,Cent2Cent[,2])
+Cent2Cent[,2] <- substr(Cent2Cent[,2],6,45)
+
+colnames(Cent2Cent) <- c("Dist.m", "AnimalID","Year","SA", "season")
+
+write.csv(Cent2Cent, file = paste0(here("Tables"),"/CentDist_Slope.csv"))
+Cent2Cent <- read.csv(paste0(here("Tables"), "/CentDist_Slope.csv"), stringsAsFactors = FALSE)
+Cent2Cent <- Cent2Cent[,c(2:6)]
+
+Cent2Cent[which(Cent2Cent$SA == "BM"),4] <- "Bullmoose"
+Cent2Cent[which(Cent2Cent$SA == "TR"),4] <- "Roman"
+Cent2Cent$Yeard <-  as.Date(ISOdate(Cent2Cent$Year,1,1))
+Cent2Cent$Year <- format(as.Date(Cent2Cent$Yeard, format="%Y-%m-%d"),"%Y")
+
+C2C = ggplot() + 
+  geom_point(data = Cent2Cent, aes(color = SA, x = Yeard, y = Dist.m),size=2) +
+  scale_x_date(date_labels="%Y",date_breaks  ="1 year") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10, face="bold")) + labs(title="Individual Animal Distances to Seasonal Centroid", xlab="Year", ylab="Distance (m)")
+
+C2C_summary = FSA::Summarize(Dist.m ~ Year + SA, data=Cent2Cent)
+C2C_summary$se = C2C_summary$sd / sqrt(C2C_summary$n)
+C2C_summary$Yeard <-  as.Date(ISOdate(C2C_summary$Year,1,1))
+
+pd = position_dodge(.4)    ### How much to jitter the points on the plot
+C2C2 =  ggplot(C2C_summary, aes(x = Year, y = mean, color = SA)) +
+        geom_point(shape = 16, size  = 2, position = pd) +
+        geom_errorbar(aes(ymin  = mean - se, ymax  = mean + se), width = 0.2, size  = 0.3, position = pd) +
+        theme_bw() + theme(axis.title = element_text(face = "bold")) + ylab("Distance (m)") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10, face="bold")) + scale_color_manual(values=c("red", "blue"))  + ylim(0,32000)
+
+
+
+C2CL2 + C2C2 ## Patchwork
+
+```
+
+#A square of slope approach
+
+```{r echo=FALSE}
+
+Aster_TR_slope <- raster(paste0(here("Spatial Data"),"/","Slope_TR.tif"))
+
+Aster_TR_slopesquared <- Aster_TR_slope^2
+
+Aster_TR_tr <- transition(Aster_TR_slopesquared, median, 16, symm=FALSE) ## asymetric transition layer.
+Aster_Aster_TR_gctr <- geoCorrection(Aster_TR_tr, type="c")
+
+## https://stackoverflow.com/questions/35347854/export-transition-layers-from-r
+saveRDS(Aster_Aster_TR_gctr, paste0(here("Spatial Data"),"/","Aster_Aster_TR_gctr_SQ.tif")) ## saved SQ = squared
+Aster_Aster_TR_gctr <- readRDS(paste0(here("Spatial Data"),"/","Aster_Aster_TR_gctr_SQ.tif"))
+
+TRWI_Centroids <- subset(TRcentroidL, subset = substr(names(TRcentroidL),3,4) == "WI")
+Years <- substr(names(TRBRB_centroidL),1,4)
+Years <- Years[c(1:64)] # Year 2020 is not in this set, manually removing it here
+TRcdist <- data.frame()
+AtoB_TR <- list()
+
+## This throws an error if you run it as a chunk, but separately it works fine. I believe it is a memory issue? The code is fine.
+
+for(i in 1:length(TRBRB_centroidL)){
+    WIYR_Centroid <- subset(TRWI_Centroids, subset = substr(names(TRWI_Centroids),6,9) == Years[i])
+    d1 <- vect(WIYR_Centroid[[1]])
+    crs(d1) <- "EPSG:32610"
+    d1 <- terra::project(d1, "EPSG:32610")
+    d1 <- as(d1, "Spatial")
+    o1 <- vect(TRBRB_centroidL[[i]])
+    crs(o1) <- "EPSG:32610"
+    o1 <- terra::project(o1, "EPSG:32610")
+    o1 <- as(o1, "Spatial")
+    AtoB_TR[i] <- shortestPath(Aster_Aster_TR_gctr, o1, d1, output="SpatialLines")
+    TRcdist[i,1] <- rgeos::gLength(AtoB_TR[[i]])
+    TRcdist[i,2] <- names(TRBRB_centroidL[i])
+}
+
+TRcdist$Years <- Years
+TRcdist$SA <- "TR"
+write.csv(TRcdist, file = paste0(here("Tables"),"/TR_dist_Slopesquared.csv"))
+
+## Roman UD centroids - year  through the slope DEM - Winter only
+
+centroidL <- list()
+centroidLn <- list()
+clc = 1
+dcnt = 1
+TRUDdist <- data.frame()
+AtoB_TR <- list()
+
+for(i in 1:length(TR_sUDsn[1])){
+    for(y in 1:length(TR_sUDs[[i]])){
+      #assign(paste0(TR_sUDsn[i],y,"_centroid"),assign(paste0(TR_sUDsn[i],y),st_centroid(st_as_sf(TR_sUDs[[i]][[y]]))))
+      centroidL[[clc]] <- st_centroid(st_as_sf(TR_sUDs[[i]][[y]]))
+      centroidLn[clc] <- paste0(TR_sUDsn[i],"_",substr(names(TR_sUDs[[i]][y]),8,11),"_centroid")
+      
+      if(clc > 1){
+        d1 <- vect(centroidL[[clc]])
+        crs(d1) <- "EPSG:32610"
+        d1 <- terra::project(d1, "EPSG:32610")
+        d1 <- as(d1, "Spatial")
+        o1 <- vect(centroidL[[clc-1]])
+        crs(o1) <- "EPSG:32610"
+        o1 <- terra::project(o1, "EPSG:32610")
+        o1 <- as(o1, "Spatial")
+        AtoB_TR[dcnt] <- shortestPath(Aster_Aster_TR_gctr, o1, d1, output="SpatialLines")
+        TRUDdist[dcnt,1] <- rgeos::gLength(AtoB_TR[[dcnt]])
+        TRUDdist[dcnt,2] <- paste0(centroidLn[clc-1],"_to_",centroidLn[clc])
+        dcnt = dcnt + 1
+        clc = clc + 1
+      }
+      else{clc = clc + 1}
+    }
+}
+
+colnames(TRUDdist) <- c("dist.m","UDs")
+write.csv(TRUDdist, file = paste0(here("Tables"),"/TRUDsCentDistSlope.csv"))
+
+## Bullmoose
+
+Aster_BM_slope <- raster(paste0(here("Spatial Data"),"/","Slope_BM.tif"))
+
+Aster_BM_slopesquared <- Aster_BM_slope^2
+
+Aster_BM_tr <- transition(Aster_BM_slopesquared, median, 16, symm=FALSE) ## asymetric transition layer.
+Aster_Aster_BM_gctr <- geoCorrection(Aster_BM_tr, type="c")
+
+## https://stackoverflow.com/questions/35347854/export-transition-layers-from-r
+saveRDS(Aster_Aster_BM_gctr, paste0(here("Spatial Data"),"/","Aster_Aster_BM_gctr_SQ.tif")) ## saved SQ = squared
+Aster_Aster_BM_gctr <- readRDS(paste0(here("Spatial Data"),"/","Aster_Aster_BM_gctr_SQ.tif"))
+
+BMWI_Centroids <- subset(BMcentroidL, subset = substr(names(BMcentroidL),3,4) == "WI")
+Years <- substr(names(BMBRB_centroidL),1,4)
+Years <- Years[c(1:64)] # Year 2020 is not in this set, manually removing it here
+BMcdist <- data.frame()
+AtoB_BM <- list()
+
+## This throws an error if you run it as a chunk, but separately it works fine. I believe it is a memory issue? The code is fine.
+
+for(i in 65:length(BMBRB_centroidL)){
+    WIYR_Centroid <- subset(BMWI_Centroids, subset = substr(names(BMWI_Centroids),6,9) == Years[i])
+    d1 <- vect(WIYR_Centroid[[1]])
+    crs(d1) <- "EPSG:32610"
+    d1 <- terra::project(d1, "EPSG:32610")
+    d1 <- as(d1, "Spatial")
+    o1 <- vect(BMBRB_centroidL[[i]])
+    crs(o1) <- "EPSG:32610"
+    o1 <- terra::project(o1, "EPSG:32610")
+    o1 <- as(o1, "Spatial")
+    AtoB_BM[i] <- shortestPath(Aster_Aster_BM_gctr, o1, d1, output="SpatialLines")
+    BMcdist[i,1] <- rgeos::gLength(AtoB_BM[[i]])
+    BMcdist[i,2] <- names(BMBRB_centroidL[i])
+}
+
+BMcdist$Years <- Years
+BMcdist$SA <- "BM"
+write.csv(BMcdist, file = paste0(here("Tables"),"/BM_dist_Slopesquared_a.csv"))
+
+centroidL <- list()
+centroidLn <- list()
+clc = 1
+dcnt = 1
+BMUDdist <- data.frame()
+AtoB_BM <- list()
+
+for(i in 1:length(BM_sUDsn[1])){
+    for(y in 1:length(BM_sUDs[[i]])){
+      #assign(paste0(BM_sUDsn[i],y,"_centroid"),assign(paste0(BM_sUDsn[i],y),st_centroid(st_as_sf(BM_sUDs[[i]][[y]]))))
+      centroidL[[clc]] <- st_centroid(st_as_sf(BM_sUDs[[i]][[y]]))
+      centroidLn[clc] <- paste0(BM_sUDsn[i],"_",substr(names(BM_sUDs[[i]][y]),8,11),"_centroid")
+      
+      if(clc > 1){
+        d1 <- vect(centroidL[[clc]])
+        crs(d1) <- "EPSG:32610"
+        d1 <- terra::project(d1, "EPSG:32610")
+        d1 <- as(d1, "Spatial")
+        o1 <- vect(centroidL[[clc-1]])
+        crs(o1) <- "EPSG:32610"
+        o1 <- terra::project(o1, "EPSG:32610")
+        o1 <- as(o1, "Spatial")
+        AtoB_BM[dcnt] <- shortestPath(Aster_Aster_BM_gctr, o1, d1, output="SpatialLines")
+        BMUDdist[dcnt,1] <- rgeos::gLength(AtoB_BM[[dcnt]])
+        BMUDdist[dcnt,2] <- names(BMBRB_centroidL[dcnt])
+        dcnt = dcnt + 1
+      }
+      
+      clc = clc + 1
+    }
+}
+
+colnames(BMUDdist) <- c("dist.m","UDs")
+write.csv(BMUDdist, file = paste0(here("Tables"),"/BMUDsCentDistSlopeSQ.csv"))
+
+#> max(Caribou_sp_BM_WI$N)
+#[1] 6236521
+#> max(Caribou_sp_BM_WI$E)
+#[1] 633400.8
+#> min(Caribou_sp_BM_WI$N)
+#[1] 6056836
+#> min(Caribou_sp_BM_WI$E)
+#[1] 548112.1
+
+ext_BM <- ext(c(548113, 633401, 6056837, 6236522))
+Aster_BM <- crop(Aster, ext_BM)
+
+Aster_BM_slope <- terrain(Aster_BM, v="slope", neighbors=8, filename=paste0(here("Spatial Data"),"/","Slope_BM.tif"), overwrite=TRUE)
+Aster_BM_slope <- raster(paste0(here("Spatial Data"),"/","Slope_BM.tif"))
+
+Aster_BM_tr <- transition(Aster_BM_slope, median, 16, symm=FALSE) ## asymetric transition layer.
+Aster_Aster_BM_gctr <- geoCorrection(Aster_BM_tr, type="c")
+
+## https://stackoverflow.com/questions/35347854/export-transition-layers-from-r
+saveRDS(Aster_Aster_BM_gctr, paste0(here("Spatial Data"),"/","Aster_Aster_BM_gctr.tif"))
+Aster_Aster_BM_gctr <- readRDS(paste0(here("Spatial Data"),"/","Aster_Aster_BM_gctr.tif"))
+
+BMWI_Centroids <- subset(BMcentroidL, subset = substr(names(BMcentroidL),3,4) == "WI")
+Years <- substr(names(BMBRB_centroidL),1,4)
+BMcdist <- data.frame()
+
+for(i in 1:length(BMBRB_centroidL)){
+    WIYR_Centroid <- subset(BMWI_Centroids, subset = substr(names(BMWI_Centroids),6,9) == Years[i])
+    d1 <- vect(WIYR_Centroid[[1]])
+    crs(d1) <- "EPSG:32610"
+    d1 <- terra::project(d1, "EPSG:32610")
+    d1 <- as(d1, "Spatial")
+    o1 <- vect(BMBRB_centroidL[[i]])
+    crs(o1) <- "EPSG:32610"
+    o1 <- terra::project(o1, "EPSG:32610")
+    o1 <- as(o1, "Spatial")
+    AtoB <- shortestPath(Aster_Aster_BM_gctr, o1, d1, output="SpatialLines")
+    BMcdist[i,1] <- rgeos::gLength(AtoB)
+    BMcdist[i,2] <- names(BMBRB_centroidL[i])
+}
+
+BMcdist$Years <- Years
+BMcdist$SA <- "BM"
+write.csv(BMcdist, file = paste0(here("Tables"),"/BM_med_dist_Slope.csv"))
+
+TRcdist <- read.csv(paste0(here("Tables"), "/TR_med_dist_Slope.csv"), stringsAsFactors = FALSE)
+BMcdist <- read.csv(paste0(here("Tables"), "/BM_med_dist_Slope.csv"), stringsAsFactors = FALSE)
+
+
+BMcdist <- BMcdist[,c(2:5)]
+TRcdist <- TRcdist[,c(3:6)]
+
+Cent2Cent <- rbind(BMcdist,TRcdist)
+Cent2Cent$season <- "WI"
+Cent2Cent[,2] <- gsub("_\\d_centroid","" ,Cent2Cent[,2])
+Cent2Cent[,2] <- substr(Cent2Cent[,2],6,45)
+
+colnames(Cent2Cent) <- c("Dist.m", "AnimalID","Year","SA", "season")
+
+write.csv(Cent2Cent, file = paste0(here("Tables"),"/CentDist_Slope.csv"))
+Cent2Cent <- read.csv(paste0(here("Tables"), "/CentDist_Slope.csv"), stringsAsFactors = FALSE)
+Cent2Cent <- Cent2Cent[,c(2:6)]
+
+Cent2Cent[which(Cent2Cent$SA == "BM"),4] <- "Bullmoose"
+Cent2Cent[which(Cent2Cent$SA == "TR"),4] <- "Roman"
+Cent2Cent$Yeard <-  as.Date(ISOdate(Cent2Cent$Year,1,1))
+Cent2Cent$Year <- format(as.Date(Cent2Cent$Yeard, format="%Y-%m-%d"),"%Y")
+
+C2C = ggplot() + 
+  geom_point(data = Cent2Cent, aes(color = SA, x = Yeard, y = Dist.m),size=2) +
+  scale_x_date(date_labels="%Y",date_breaks  ="1 year") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10, face="bold")) + labs(title="Individual Animal Distances to Seasonal Centroid", xlab="Year", ylab="Distance (m)")
+
+C2C_summary = FSA::Summarize(Dist.m ~ Year + SA, data=Cent2Cent)
+C2C_summary$se = C2C_summary$sd / sqrt(C2C_summary$n)
+C2C_summary$Yeard <-  as.Date(ISOdate(C2C_summary$Year,1,1))
+
+pd = position_dodge(.4)    ### How much to jitter the points on the plot
+C2C2 =  ggplot(C2C_summary, aes(x = Year, y = mean, color = SA)) +
+        geom_point(shape = 16, size  = 2, position = pd) +
+        geom_errorbar(aes(ymin  = mean - se, ymax  = mean + se), width = 0.2, size  = 0.3, position = pd) +
+        theme_bw() + theme(axis.title = element_text(face = "bold")) + ylab("Distance (m)") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10, face="bold")) + scale_color_manual(values=c("red", "blue"))  + ylim(0,32000)
+
+
+
+C2CL2 + C2C2 ## Patchwork
+
+```
+
+#Example figures
+
+```{r echo=FALSE}
+
+
+## TR car058 2008
+i=16
+Years <- substr(names(TRBRB_centroidL),1,4)
+WIYR_Centroid <- subset(TRWI_Centroids, subset = substr(names(TRWI_Centroids),6,9) == Years[i])
+d1 <- vect(WIYR_Centroid[[1]])
+crs(d1) <- "EPSG:32610"
+d1 <- terra::project(d1, "EPSG:32610")
+d1 <- as(d1, "Spatial")
+o1 <- vect(TRBRB_centroidL[[i]])
+crs(o1) <- "EPSG:32610"
+o1 <- terra::project(o1, "EPSG:32610")
+o1 <- as(o1, "Spatial")
+car0583_AtoB <- shortestPath(Aster_Aster_TR_gctr, o1, d1, output="SpatialLines")
+
+## Note - an extra number was passed onto the name in the centroid distance calcs - does not impact outputs
+car058_BRB <- vect(paste0(here("BRB_UDs"),"/", "TR_WI_2008_car058.shp"))
+
+QU_TR.shp <- readOGR(paste0(here("Spatial Data"),"/Quintette_Study_Areas_TR_Dataclip.shp"))
+Aster_TR_slope <- rast(paste0(here("Spatial Data"),"/","Slope_TR.tif"))
+
+ext_TRsm <- ext(c(620000, 644500, 6075000, 6095000))
+Aster_TR_slope_sm <- crop(Aster_TR_slope, ext_TRsm)
+
+vect(paste0(here("BRB_UDs"),"/", "BM_WI_2008_car069.shp"))
+
+TR_WI50_2008 <- vect(paste0(here("adeHRoutput_noclip","Seasons"),"/TR_Agg_2008_WI_50_href4S.shp"))
+my.palette <- viridis(n = 70, direction = -1)
+
+plot(Aster_TR_slope_sm)
+plot(QU_TR.shp, col=adjustcolor("grey2",alpha.f=0.2), border="black", add=TRUE)
+plot(car058_BRB, col=adjustcolor("dark green",alpha.f=0.3), add = TRUE)
+plot(TR_sUDs[[1]][[6]], col=adjustcolor("blue",alpha.f=0.3), add = TRUE)
+plot(car0583_AtoB, col="red", add=TRUE, lwd=3, lty=2)
+plot(o1, add=TRUE, pch=21, lwd=2, bg="green", cex=2, col="black")
+plot(TRWI_Centroids[[6]], add=TRUE, pch=21, lwd=2, bg="red", cex=2, col="black")
+
+
+## BM car069 2008
+i=23
+Years <- substr(names(BMBRB_centroidL),1,4)
+WIYR_Centroid <- subset(BMWI_Centroids, subset = substr(names(BMWI_Centroids),6,9) == Years[i])
+d1 <- vect(WIYR_Centroid[[1]])
+crs(d1) <- "EPSG:32610"
+d1 <- terra::project(d1, "EPSG:32610")
+d1 <- as(d1, "Spatial")
+o1 <- vect(BMBRB_centroidL[[i]])
+crs(o1) <- "EPSG:32610"
+o1 <- terra::project(o1, "EPSG:32610")
+o1 <- as(o1, "Spatial")
+car0690_AtoB <- shortestPath(Aster_Aster_BM_gctr, o1, d1, output="SpatialLines")
+
+car069_BRB <- vect(paste0(here("BRB_UDs"),"/", "BM_WI_2008_car069.shp"))
+QU_BM.shp <- readOGR(paste0(here("Spatial Data"),"/Quintette_Study_Areas_BM_Dataclip.shp"))
+Aster_BM_slope <- rast(paste0(here("Spatial Data"),"/","Slope_BM.tif"))
+
+ext_BMsm <- ext(c(525000, 618000, 6000000, 6125000))
+Aster_BM_slope_sm <- crop(rast(Aster_BM_slope), ext_BMsm)
+
+#BM_WI50_2008 <- vect(paste0(here("adeHRoutput_noclip","Seasons"),"/BM_Agg_2008_WI_50_href4S.shp"))
+
+plot(Aster_BM_slope_sm)
+plot(QU_BM.shp, col=adjustcolor("grey2",alpha.f=0.2), border="black", add=TRUE)
+plot(car069_BRB, col=adjustcolor("dark green",alpha.f=0.3), add = TRUE)
+plot(BM_sUDs[[1]][[6]], col=adjustcolor("blue",alpha.f=0.3), add = TRUE)
+plot(car0690_AtoB, col="red", add=TRUE, lwd=3, lty=2)
+plot(o1, add=TRUE, pch=21, lwd=2, bg="green", cex=2, col="black")
+plot(BMWI_Centroids[[6]], add=TRUE, pch=21, lwd=2, bg="red", cex=2, col="black")
+       
+
+
+
+# Create list of polygons of different isopleths
+SPDF = list()
+Levels = seq(95,50,by = -5)
+for (j in 1 : length(Levels)){
+  cat(j,"\n")
+# extract every isopleth of level j
+  verBRB <- getverticeshr(car069_BRB,percent = Levels[j])
+# list of every polygons made with each contour level
+  SPDF[[j]] = verBRB
+  names(SPDF)[j] = Levels[j]
+}
+
+# set shading colours for every contour lines
+cols = colorRampPalette(c("yellow","red"))
+cols = cols(length(SPDF))
+
+# borders of every isopleth
+bord = 'NA'
+# export results on a single plot by overlapping polygons
+plot(SPDF[[1]],col = cols[1],border = bord, axes = F,
+main = " Bullmoose BRB-UD Car069, Winter 2008")
+for (i in 2 : length(SPDF)){
+plot(SPDF[[i]],col = cols[i],border = bord, add = T)
+}
+
+
+
+```

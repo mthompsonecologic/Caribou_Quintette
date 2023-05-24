@@ -1,0 +1,64 @@
+---
+title: "CollarProportionStats"
+author: "Mark Thompson"
+date: '2022-07-04'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+
+install.packages("here")
+install.packages("ggplot2")
+install.packages("glmmTMB")
+install.packages("performance")
+
+library(here)
+library(ggplot2)
+library(glmmTMB)
+library(performance)
+
+```
+
+## Beta GLMM
+
+```{r pressure, echo=FALSE}
+
+QU_c_p <- read.csv(paste0(here("CollarProportions"),"/QU_collar_p.csv"),	stringsAsFactors=FALSE,	na.strings="NA")
+QU_c_p$year <- as.factor(QU_c_p$year)
+model_beta <- glmmTMB(prop  ~ loc + (1|year), data = QU_c_p, beta_family(link = "logit"))
+summary(model_beta)
+
+  r2(model_beta)
+fit_beta<-fitted(model_beta)
+res_beta<-resid(model_beta)
+
+# Make a scatter plot of residuals against fitted values
+beta_resfit <- qplot(fit_beta, res_beta, geom = "point") +
+              geom_abline(intercept = 0, slope = 0, colour = "red") + labs(title = "Residuals vs fitted values", x = "fitted value", y = "residual") + theme_classic()
+beta_resfit
+
+# Make a histogram of the residuals
+beta_hist <- qplot(res_beta,
+                   geom = "histogram",
+                   bins = 10) +
+  geom_vline(xintercept=0, color='red')+
+  labs(title = "Histogram of residuals",
+       x = "residual")+
+  theme_classic()
+beta_hist 
+
+
+
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

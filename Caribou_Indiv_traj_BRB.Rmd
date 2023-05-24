@@ -1,0 +1,1106 @@
+---
+title: "Caribou_Indiv_traj_BRB"
+author: "Mark Thompson"
+date: '2022-07-27'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This RMarkdown script is designed to:
+
+  1. Plot annual movement trajectories of individual caribou. Possibly assigning unique point or line factor assignments by color (e.g., EW = Brown, MW = Blue, LW = Grey, CA = green, etc.). This will be accomplished with adehabitatLT (see: https://jamesepaterson.github.io/jamespatersonblog/02_trackingworkshop_trajectories for simple examples).
+  
+  2. Calculate BRB centroids.
+  
+  3. Calculate distances of individual BRB centroids to centroid of the study area, year, and season of the UD aggregates.
+  
+  4. Tabulate the mean and SE of the individual BRB centroids to aggregate centroids.
+  
+  5. 
+
+“In the absence of standardized procedure, one may consider that the serial correlation is sufficiently high when the median distance between successive relocations is much (e.g. 10 times) smaller than the HR diameter. If it is necessary to keep one relocation every n to obtain a low serial correlation, the Tmax value can be set to n–1 times the recording time interval (assuming that data were acquired with a constant recording time interval)”. https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0014592#abstract0 
+
+```{r echo=FALSE}
+if(!require(adehabitatLT)){install.packages("adehabitatLT")}
+if(!require(adehabitatHR)){install.packages("adehabitatHR")}
+if(!require(stringr)){install.packages("stringr")}
+if(!require(ks)){install.packages("ks")}
+if(!require(rgdal)){install.packages("rgdal")}
+if(!require(here)){install.packages("here")}
+if(!require(terra)){install.packages("terra")}
+
+library(adehabitatLT)
+library(adehabitatHR)
+library(stringr)
+library(ks)
+library(rgdal)
+library(here)
+library(terra)
+
+
+```
+
+## adehabitatLT
+
+Movement trajectories
+
+```{r echo=FALSE}
+
+##Caribou_Quintette2 <- read.csv(paste0(here("Input Data"), "/Caribou_July2022.csv"), stringsAsFactors = FALSE) # Old
+Caribou_Quintette <- read.csv(paste0(here("Input Data"), "/Caribou_noclip.csv"))
+## Adjusting order to fit with the original data that was used to build this script after data updates provided by SM in Aug 2022.
+#Caribou_Quintette$year <- format.Date(Caribou_Quintette$timestamp, format = "%Y")
+
+#Caribou_Quintette <- Caribou_Quintette[,c(1:3,5,7:8,4,10,9)]
+names(Caribou_Quintette)[names(Caribou_Quintette) == "Season2"] <- "season"
+
+## There was a mistake with Calvin and Calving
+Caribou_Quintette[which(Caribou_Quintette$season == "Calvin"),4] <- "Calving"
+
+
+assign_seasonYR <- function(d) {
+  ifelse(format(as.Date(d, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),"%m") == "11" & format(as.Date(d, format =  "%Y-%m-%d %H:%M:%S", tz = "GMT"),"%d") >= "1", as.numeric(format(as.Date(d, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),"%Y"))+1,
+  ifelse(format(as.Date(d, format =  "%Y-%m-%d %H:%M:%S", tz = "GMT"),"%m") == "12" & format(as.Date(d, format =  "%Y-%m-%d %H:%M:%S", tz = "GMT"),"%d") <= "31", as.numeric(format(as.Date(d, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),"%Y")), as.numeric(format(as.Date(d, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),"%Y"))))
+}
+
+## If the winter season is Nov 1 to Dec 31, then it is the year+1 winter season.
+Caribou_Quintette$YearSeas = sapply(Caribou_Quintette$timestamp, assign_seasonYR)
+
+Caribou_Quintette$WIdate <- paste0(Caribou_Quintette$YearSeas,substr(as.character(Caribou_Quintette$timestamp),5,10)," ",substr(as.character(Caribou_Quintette$timestamp),12,19))
+Caribou_Quintette$WIdate <- as.POSIXct(Caribou_Quintette$WIdate, format = "%Y-%m-%d %H:%M:%S", tz = "GMT")
+
+Caribou_Quintette$SA[Caribou_Quintette$SA == "BM"] <- "CCBS"
+Caribou_Quintette$SA[Caribou_Quintette$SA == "TR"] <- "BKRQ"
+
+Caribou_BM <- Caribou_Quintette[which(Caribou_Quintette$SA == "CCBS"),]
+Caribou_TR <- Caribou_Quintette[which(Caribou_Quintette$SA == "BKRQ"),]
+
+# Create a dataframe to hold all of the contents of Caribout.ltraj with a column for id. 
+# Put first element into the dataframe
+
+## use Caribou_BM$timestamp for actual date, or Caribou_BM$WIdate to set early winter with year+1
+CaribouBM.ltraj <- as.ltraj(xy = Caribou_BM[,c("E", "N")], 
+                       date =  as.POSIXct(Caribou_BM$WIdate, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
+                       id = Caribou_BM$AnimalID, typeII = TRUE)
+
+
+total.path.df <- data.frame(CaribouBM.ltraj[[1]], id = attr(CaribouBM.ltraj[[1]], "id"))
+
+# Use a 'for' loop to fill the larger dataframe with the rest of the trajectories.
+for(i in 2:length(CaribouBM.ltraj)) {
+  total.path.df <- rbind(total.path.df, 
+                         data.frame(CaribouBM.ltraj[[i]], id = attr(CaribouBM.ltraj[[i]], "id")))
+}
+
+# Calculate distance travelled per day and add it to the dataframe
+total.path.df$distperday <- total.path.df$dist / (total.path.df$dt/60/60/24)
+
+# Aggregate to show mean distance per day for each animal
+path.summary <- aggregate(distperday~id, data = total.path.df, FUN = mean)
+path.summary$sd <- aggregate(distperday~id, data = total.path.df, FUN = sd)$distperday
+
+# Look at summmary dataframe
+path.summary
+
+
+# Make a graph to visualize data using ggplot
+library(ggplot2)
+
+# Create limits used for error bars in graph
+limits <- aes(ymax = path.summary$distperday + path.summary$sd, 
+              ymin = path.summary$distperday - path.summary$sd)
+
+BM_path.plot <- ggplot(data = path.summary, aes(x = id, y = distperday, colour = id)) + 
+  geom_point(size = 3) + # add points
+  geom_errorbar(limits, width = 0.2) + # adds error bars
+  labs(x = "Animal ID", 
+       y = "Mean distance travelled per day (m)" ) + # Axis labels
+  theme_classic() + # Make plot black and white with no background grid
+  theme(legend.position = "none") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) 
+
+
+#BM_path.plot # call plot
+
+## Trend Roman
+## use Caribou_TR$timestamp for actual date, or Caribou_TR$WIdate to set early winter with year+1
+
+CaribouTR.ltraj <- as.ltraj(xy = Caribou_TR[,c("E", "N")], 
+                       date =  as.POSIXct(Caribou_TR$WIdate, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
+                       id = Caribou_TR$AnimalID, typeII = TRUE)
+
+
+# Create a dataframe to hold all of the contents of Caribout.ltraj with a column for id. 
+# Put first element into the dataframe
+
+total.path.df <- data.frame(CaribouTR.ltraj[[1]], id = attr(CaribouTR.ltraj[[1]], "id"))
+
+# Use a 'for' loop to fill the larger dataframe with the rest of the trajectories.
+for(i in 2:length(CaribouTR.ltraj)) {
+  total.path.df <- rbind(total.path.df, 
+                         data.frame(CaribouTR.ltraj[[i]], id = attr(CaribouTR.ltraj[[i]], "id")))
+}
+
+# Calculate distance travelled per day and add it to the dataframe
+total.path.df$distperday <- total.path.df$dist / (total.path.df$dt/60/60/24)
+
+# Aggregate to show mean distance per day for each animal
+TRpath.summary <- aggregate(distperday~id, data = total.path.df, FUN = mean)
+TRpath.summary$sd <- aggregate(distperday~id, data = total.path.df, FUN = sd)$distperday
+
+# Look at summmary dataframe
+TRpath.summary
+
+# Make a graph to visualize data using ggplot
+library(ggplot2)
+# Create limits used for error bars in graph
+limits <- aes(ymax = TRpath.summary$distperday + TRpath.summary$sd, 
+              ymin = TRpath.summary$distperday - TRpath.summary$sd)
+
+# Make plot. Choose the dataframe (data) and aesthetics (aes; for the x and y)
+TR_path.plot <- ggplot(data = TRpath.summary, aes(x = id, y = distperday, colour = id)) + 
+  geom_point(size = 3) + # add points
+  geom_errorbar(limits, width = 0.2) + # adds error bars
+  labs(x = "Animal ID", 
+       y = "Mean distance travelled per day (m)" ) + # Axis labels
+  theme_classic() + # Make plot black and white with no background grid
+  theme(legend.position = "none") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) 
+
+#TR_path.plot # call plot
+
+```
+
+
+```{r echo=FALSE}
+
+## Four season model - 1. EW, MW, LW winter as one, 2. calving, 3. summer, and 4. rutting
+## Organize winter as one:
+Caribou_BM_WI <- Caribou_BM[which(Caribou_BM$season == "Winter"),]
+Caribou_BM_CA <- Caribou_BM[which(Caribou_BM$season == "Calving"),]
+Caribou_BM_SU <- Caribou_BM[which(Caribou_BM$season == "Summer"),]
+Caribou_BM_RU <- Caribou_BM[which(Caribou_BM$season == "Rut"),]
+Caribou_TR_WI <- Caribou_TR[which(Caribou_TR$season == "Winter"),]
+Caribou_TR_CA <- Caribou_TR[which(Caribou_TR$season == "Calving"),]
+Caribou_TR_SU <- Caribou_TR[which(Caribou_TR$season == "Summer"),]
+Caribou_TR_RU <- Caribou_TR[which(Caribou_TR$season == "Rut"),]
+
+years <- unique(Caribou_Quintette$YearSeas)
+
+## Bullmoose winter
+Caribou_BM_WI_LI <- list()
+tally = 1
+x = 1
+IndID <- data.frame(matrix(ncol=1))
+colnames(IndID) <- "ID"
+
+for(y in 1:length(years)){
+  if(nrow(data.frame(Caribou_BM_WI[which(Caribou_BM_WI$YearSeas == years[y]), ])) > 0){
+    assign("temp",data.frame(Caribou_BM_WI[which(Caribou_BM_WI$YearSeas == years[y]), ]))
+    Ind <- unique(temp$AnimalID)
+      for(i in 1:length(Ind)){
+        if(nrow(temp[which(temp$AnimalID == Ind[i]),]) < 5){  ## Threshold on #track points
+          IndID[x,] <- Ind[i]
+          x = x + 1
+        }else{next()}}
+    Caribou_BM_WI_LI[[tally]] <- temp[!temp$AnimalID %in% IndID$ID,]
+    names(Caribou_BM_WI_LI)[tally] <- paste0("Caribou_BM_WI_",years[y])
+    tally = tally + 1
+  }else{next()}
+}
+
+Caribou_BM_WI_LI[sapply(Caribou_BM_WI_LI,function(x) all(is.na(x)))] <- NULL
+
+
+## Bullmoose Calving
+Caribou_BM_CA_LI <- list()
+tally = 1
+x = 1
+IndID <- data.frame(matrix(ncol=1))
+colnames(IndID) <- "ID"
+
+
+for(y in 1:length(years)){
+    if(nrow(data.frame(Caribou_BM_CA[which(Caribou_BM_CA$YearSeas == years[y]), ])) > 0){
+    assign("temp",data.frame(Caribou_BM_CA[which(Caribou_BM_CA$YearSeas == years[y]), ]))
+    Ind <- unique(temp$AnimalID)
+      for(i in 1:length(Ind)){
+        if(nrow(temp[which(temp$AnimalID == Ind[i]),]) < 5){  ## Threshold on #track points
+          IndID[x,] <- Ind[i]
+          x = x + 1
+        }else{next()}}
+    Caribou_BM_CA_LI[[tally]] <- temp[!temp$AnimalID %in% IndID$ID,]
+    names(Caribou_BM_CA_LI)[tally] <- paste0("Caribou_BM_CA_",years[y])
+    tally = tally + 1}else{next()}
+}
+
+Caribou_BM_CA_LI[sapply(Caribou_BM_CA_LI,function(x) all(is.na(x)))] <- NULL
+
+
+## Bullmoose Summer
+Caribou_BM_SU_LI <- list()
+tally = 1
+x = 1
+IndID <- data.frame(matrix(ncol=1))
+colnames(IndID) <- "ID"
+
+for(y in 1:length(years)){
+    if(nrow(data.frame(Caribou_BM_SU[which(Caribou_BM_SU$YearSeas == years[y]), ])) > 0){
+    assign("temp",data.frame(Caribou_BM_SU[which(Caribou_BM_SU$YearSeas == years[y]), ]))
+    Ind <- unique(temp$AnimalID)
+      for(i in 1:length(Ind)){
+        if(nrow(temp[which(temp$AnimalID == Ind[i]),]) < 5){  ## Threshold on #track points
+          IndID[x,] <- Ind[i]
+          x = x + 1
+        }else{next()}}
+     Caribou_BM_SU_LI[[tally]] <- temp[!temp$AnimalID %in% IndID$ID,]
+     names(Caribou_BM_SU_LI)[tally] <- paste0("Caribou_BM_SU_",years[y])
+     tally = tally + 1}else{next()}
+}
+
+Caribou_BM_SU_LI[sapply(Caribou_BM_SU_LI,function(x) all(is.na(x)))] <- NULL
+
+## This was a check that the summer dates stayed the same after the winter seasonal correction was made (e.g., Nov-Dec = %Y+1 to fit in Jan-Apr %Y) - test = TRUE, so it is good.
+#Caribou_BM_SU_LI <- lapply(Caribou_BM_SU_LI, function(x) {
+#      x[,5] <- as.POSIXct(as.Date(x[,5]))
+#      x })
+#
+#test <- lapply(Caribou_BM_SU_LI, function(x) {
+#      x <- x[,5] == x[,5]
+#      x })
+
+
+## Bullmoose Rutting
+Caribou_BM_RU_LI <- list()
+tally = 1
+x = 1
+IndID <- data.frame(matrix(ncol=1))
+colnames(IndID) <- "ID"
+
+
+for(y in 1:length(years)){
+    if(nrow(data.frame(Caribou_BM_RU[which(Caribou_BM_RU$YearSeas == years[y]), ])) > 0){
+    assign("temp",data.frame(Caribou_BM_RU[which(Caribou_BM_RU$YearSeas == years[y]), ]))
+    Ind <- unique(temp$AnimalID)
+      for(i in 1:length(Ind)){
+        if(nrow(temp[which(temp$AnimalID == Ind[i]),]) < 5){  ## Threshold on #track points
+          IndID[x,] <- Ind[i]
+          x = x + 1
+        }else{next()}}
+     Caribou_BM_RU_LI[[tally]] <- temp[!temp$AnimalID %in% IndID$ID,]
+     names(Caribou_BM_RU_LI)[tally] <- paste0("Caribou_BM_RU_",years[y])
+     tally = tally + 1}else{next()}
+}
+
+Caribou_BM_RU_LI[sapply(Caribou_BM_RU_LI,function(x) all(is.na(x)))] <- NULL
+
+## Individual Bullmoose trajectories: by year and by season
+CaribouBM.ltraj <- as.ltraj(xy = Caribou_BM[,c("E", "N")], 
+                       date =  as.POSIXct(Caribou_BM$WIdate, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
+                       id = Caribou_BM$AnimalID, typeII = TRUE)
+
+##Winter
+BM_WI_Traj <- list()
+
+for(l in 1:length(Caribou_BM_WI_LI)){
+  BM_WI_Traj[[l]] <-  as.ltraj(xy = Caribou_BM_WI_LI[[l]][,c("E", "N")], 
+                          date =  as.POSIXct(Caribou_BM_WI_LI[[l]]$timestamp, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
+                          id = Caribou_BM_WI_LI[[l]]$AnimalID, typeII = TRUE)
+  names(BM_WI_Traj)[l] <- paste0("BM_WI_",unique(Caribou_BM_WI_LI[[l]]$YearSeas))
+}
+
+
+##Calving
+BM_CA_Traj <- list()
+
+for(l in 1:length(Caribou_BM_CA_LI)){
+  BM_CA_Traj[[l]] <-  as.ltraj(xy = Caribou_BM_CA_LI[[l]][,c("E", "N")], 
+                          date =  as.POSIXct(Caribou_BM_CA_LI[[l]]$timestamp, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
+                          id = Caribou_BM_CA_LI[[l]]$AnimalID, typeII = TRUE)
+  names(BM_CA_Traj)[l] <- paste0("BM_CA_",unique(Caribou_BM_CA_LI[[l]]$YearSeas))
+}
+
+##Summer
+BM_SU_Traj <- list()
+
+for(l in 1:length(Caribou_BM_SU_LI)){
+  BM_SU_Traj[[l]] <-  as.ltraj(xy = Caribou_BM_SU_LI[[l]][,c("E", "N")], 
+                          date =  as.POSIXct(Caribou_BM_SU_LI[[l]]$timestamp, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
+                          id = Caribou_BM_SU_LI[[l]]$AnimalID, typeII = TRUE)
+  names(BM_SU_Traj)[l] <- paste0("BM_SU_",unique(Caribou_BM_SU_LI[[l]]$YearSeas))
+}
+
+##Rutting
+BM_RU_Traj <- list()
+
+for(l in 1:length(Caribou_BM_RU_LI)){
+  BM_RU_Traj[[l]] <-  as.ltraj(xy = Caribou_BM_RU_LI[[l]][,c("E", "N")], 
+                          date =  as.POSIXct(Caribou_BM_RU_LI[[l]]$timestamp, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
+                          id = Caribou_BM_RU_LI[[l]]$AnimalID, typeII = TRUE)
+  names(BM_RU_Traj)[l] <- paste0("BM_RU_",unique(Caribou_BM_RU_LI[[l]]$YearSeas))
+}
+
+## Roman winter
+Caribou_TR_WI_LIa <- list()
+Caribou_TR_WI_LI <- list()
+tally = 1
+
+for(y in 1:length(years)){
+    if(nrow(data.frame(Caribou_TR_WI[which(Caribou_TR_WI$YearSeas == years[y]), ])) > 0){
+    assign("temp",data.frame(Caribou_TR_WI[which(Caribou_TR_WI$YearSeas == years[y]), ]))
+    Ind <- unique(temp$AnimalID)
+      for(i in 1:length(Ind)){
+        if(nrow(temp[which(temp$AnimalID == Ind[i]),]) < 5){  ## Threshold on #track points
+          IndID[x,] <- Ind[i]
+          x = x + 1
+        }else{next()}}
+     Caribou_TR_WI_LI[[tally]] <- temp[!temp$AnimalID %in% IndID$ID,]
+     names(Caribou_TR_WI_LI)[tally] <- paste0("Caribou_TR_WI_",years[y])
+     tally = tally + 1}else{next()}
+}
+
+Caribou_TR_WI_LI[sapply(Caribou_TR_WI_LI,function(x) all(is.na(x)))] <- NULL
+
+
+## Roman Calving
+Caribou_TR_CA_LI <- list()
+tally = 1
+x = 1
+IndID <- data.frame(matrix(ncol=1))
+colnames(IndID) <- "ID"
+
+for(y in 1:length(years)){
+    if(nrow(data.frame(Caribou_TR_CA[which(Caribou_TR_CA$YearSeas == years[y]), ])) > 0){
+    assign("temp",data.frame(Caribou_TR_CA[which(Caribou_TR_CA$YearSeas == years[y]), ]))
+    Ind <- unique(temp$AnimalID)
+      for(i in 1:length(Ind)){
+        if(nrow(temp[which(temp$AnimalID == Ind[i]),]) < 5){  ## Threshold on #track points
+          IndID[x,] <- Ind[i]
+          x = x + 1
+        }else{next()}}
+     Caribou_TR_CA_LI[[tally]] <- temp[!temp$AnimalID %in% IndID$ID,]
+     names(Caribou_TR_CA_LI)[tally] <- paste0("Caribou_TR_CA_",years[y])
+     tally = tally + 1}else{next()}
+}
+
+Caribou_TR_CA_LI[sapply(Caribou_TR_CA_LI,function(x) all(is.na(x)))] <- NULL
+
+
+## Roman Summer
+Caribou_TR_SU_LI <- list()
+tally = 1
+x = 1
+IndID <- data.frame(matrix(ncol=1))
+colnames(IndID) <- "ID"
+
+for(y in 1:length(years)){
+    if(nrow(data.frame(Caribou_TR_SU[which(Caribou_TR_SU$YearSeas == years[y]), ])) > 0){
+    assign("temp",data.frame(Caribou_TR_SU[which(Caribou_TR_SU$YearSeas == years[y]), ]))
+    Ind <- unique(temp$AnimalID)
+      for(i in 1:length(Ind)){
+        if(nrow(temp[which(temp$AnimalID == Ind[i]),]) < 5){  ## Threshold on #track points
+          IndID[x,] <- Ind[i]
+          x = x + 1
+        }else{next()}}
+    Caribou_TR_SU_LI[[tally]] <- temp[!temp$AnimalID %in% IndID$ID,]
+    names(Caribou_TR_SU_LI)[tally] <- paste0("Caribou_TR_SU_",years[y])
+    tally = tally + 1}else{next()}
+}
+
+Caribou_TR_SU_LI[sapply(Caribou_TR_SU_LI,function(x) all(is.na(x)))] <- NULL
+
+
+## Roman Rutting
+Caribou_TR_RU_LI <- list()
+tally = 1
+x = 1
+IndID <- data.frame(matrix(ncol=1))
+colnames(IndID) <- "ID"
+
+
+for(y in 1:length(years)){
+    if(nrow(data.frame(Caribou_TR_RU[which(Caribou_TR_RU$YearSeas == years[y]), ])) > 0){
+    assign("temp",data.frame(Caribou_TR_RU[which(Caribou_TR_RU$YearSeas == years[y]), ]))
+    Ind <- unique(temp$AnimalID)
+      for(i in 1:length(Ind)){
+        if(nrow(temp[which(temp$AnimalID == Ind[i]),]) < 5){  ## Threshold on #track points
+          IndID[x,] <- Ind[i]
+          x = x + 1
+        }else{next()}}
+     Caribou_TR_RU_LI[[tally]] <- temp[!temp$AnimalID %in% IndID$ID,]
+     names(Caribou_TR_RU_LI)[tally] <- paste0("Caribou_TR_RU_",years[y])
+     tally = tally + 1}else{next()}
+}
+
+Caribou_TR_RU_LI[sapply(Caribou_TR_RU_LI,function(x) all(is.na(x)))] <- NULL
+
+## Individual Roman trajectories: by year and by season
+CaribouTR.ltraj <- as.ltraj(xy = Caribou_TR[,c("E", "N")], 
+                       date =  as.POSIXct(Caribou_TR$WIdate, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
+                       id = Caribou_TR$AnimalID, typeII = TRUE)
+
+##Winter
+TR_WI_Traj <- list()
+
+for(l in 1:length(Caribou_TR_WI_LI)){
+  TR_WI_Traj[[l]] <-  as.ltraj(xy = Caribou_TR_WI_LI[[l]][,c("E", "N")], 
+                          date =  as.POSIXct(Caribou_TR_WI_LI[[l]]$timestamp, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
+                          id = Caribou_TR_WI_LI[[l]]$AnimalID, typeII = TRUE)
+  names(TR_WI_Traj)[l] <- paste0("TR_WI_",unique(Caribou_TR_WI_LI[[l]]$YearSeas))
+}
+
+
+##Calving
+TR_CA_Traj <- list()
+
+for(l in 1:length(Caribou_TR_CA_LI)){
+  TR_CA_Traj[[l]] <-  as.ltraj(xy = Caribou_TR_CA_LI[[l]][,c("E", "N")], 
+                          date =  as.POSIXct(Caribou_TR_CA_LI[[l]]$timestamp, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
+                          id = Caribou_TR_CA_LI[[l]]$AnimalID, typeII = TRUE)
+  names(TR_CA_Traj)[l] <- paste0("TR_CA_",unique(Caribou_TR_CA_LI[[l]]$YearSeas))
+}
+
+##Summer
+TR_SU_Traj <- list()
+
+for(l in 1:length(Caribou_TR_SU_LI)){
+  TR_SU_Traj[[l]] <-  as.ltraj(xy = Caribou_TR_SU_LI[[l]][,c("E", "N")], 
+                          date =  as.POSIXct(Caribou_TR_SU_LI[[l]]$timestamp, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
+                          id = Caribou_TR_SU_LI[[l]]$AnimalID, typeII = TRUE)
+  names(TR_SU_Traj)[l] <- paste0("TR_SU_",unique(Caribou_TR_SU_LI[[l]]$YearSeas))
+}
+
+##Rutting
+TR_RU_Traj <- list()
+
+for(l in 1:length(Caribou_TR_RU_LI)){
+  TR_RU_Traj[[l]] <-  as.ltraj(xy = Caribou_TR_RU_LI[[l]][,c("E", "N")], 
+                          date =  as.POSIXct(Caribou_TR_RU_LI[[l]]$timestamp, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
+                          id = Caribou_TR_RU_LI[[l]]$AnimalID, typeII = TRUE)
+  names(TR_RU_Traj)[l] <- paste0("TR_RU_",unique(Caribou_TR_RU_LI[[l]]$YearSeas))
+}
+
+
+
+
+```
+
+
+Calculating BRB model inputs
+
+# D: diffusion parameter in m^2 / sec.
+
+# Tmax: Maximum amount of time allowed between successive locations, after which the location pair is omitted.
+
+# Lmin: a threshold distance between pairs of locations. The activity state of an individual with locations separated by distances less than this value may be defined as “resting”; these and can be filtered out from normal activity, which includes pairs of locations separated by distances greater than the threshold (Calenge 2006)
+
+# hmin: minimum smoothing parameter applied to all relocations. Must be at least equal to SD of location errors.
+
+From the AdehabitatHR package for Buffalo data:
+"As Benhamou (2011), we set Tmax = 180 minutes and Lmin = 50 metres (the smallest distance below which we consider that the animal is not moving)."
+
+Bradshaw et al. (1997; J. Wildl. Manage. 61(4)) calculated movement rates of 1.6-2.7 km / hr or 0.28 - 0.75 m/sec, which could be a ballpark maximum of the diffusion parameter in m^2 / sec. However, Johnson et al. (2002; Ecological Applications, 12(6)) estimated an average of  intra- and interpatch movements:
+
+"Scale criteria (rc) separating small- from large-scale movements ranged from 0.95 to 3.89 m/min. Using those values and the most frequently recorded sampling interval (4 h) resulted in average intra- and interpatch movements of 450.67 +- 46.78 m and 1268.78 +- 98.69 m (mean +- 1 SE), respectively". Conversion of to rc = 0.016 - 0.065 m / s
+
+This corresponds to an intrapatch movement lag range time of:
+
+(0.75 m/s) / (450.67 m) = 600.89 minutes
+(0.016 m/s) / (450.67 m) = 469.45 minutes
+(0.065 m/s) / (1268.78 + 98.69 m = 1,367.47 m) = 350.63 minutes
+(0.016 m/s) / (1,367.47 m) = 1,424.45 minutes
+
+Therefore, Tmax shall be estimated at 1,500 minutes.
+
+Les (2018; https://conservancy.umn.edu/bitstream/handle/11299/198957/Les_umn_0130M_19275.pdf?sequence=1&isAllowed=y) describes methods for setting their values for moose at:
+Tmax = 518400 seconds (6 days, or 8,640 minutes), Lmin = 0.1 m, hmin = 55 m.
+
+These authors Ch11 (https://science.peregrinefund.org/applied-raptor-ecology) - for raptors: 
+Tmax = 4 hours, Lmin = 50 meters, and hmin = 500 meters.
+
+Tmax should be based on biological relevant information to include only time intervals within serially correlated locations (Benhamou and Cornelis 2010). A semi-variogram approach is used to calculate lag-time and spatial distance to independence. Anything < Lmin (the threshold distance between pairs of locations), the animal is considered to be resting. Note that Jay et al. (2012; https://www.int-res.com/articles/feature/m468p001.pdf) recommend setting a Lmin arbitrarily low to avoid exclusion of locations based on activity levels "...to ensure that the BRB function would always use the recorded activity when weighting track segments". A lower Lmin adds to the area in the estimation.
+
+Caveat on, as we do not have the localization errors (https://cran.r-project.org/web/packages/ctmm/vignettes/error.html), BRB hmin "...must be at least equal to the standard deviation of the localization errors..." https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0014592#abstract0
+
+Note: Glenn Sutherland provided some information on DOP method: ..."methods we used following Dickie et a. (2021): " We screened GPS data for potential errors by excluding 3-dimensional locations with a dilution of precision (DOP) >10 and 2-dimensional locations with DOP > 5 (Bjørneraas et al., 2010)." Scott McKnay noted a SD of 20 m - so this is the hmin setting.
+
+
+BRB home range analysis - Test Example
+
+```{r echo=FALSE}
+DLik <- BRB.likD(CaribouTR.ltraj, Tmax=1500*60, Lmin=2) #Lmin is the minimum distance (in m) between successive relocations defining intensive use or resting. Note that Lmin has little effect on the estimate. It is reasonable to assume that caribou are resting within a 2 m distance.
+
+Dest <- as.data.frame(lapply(DLik, function (x) mean(x[,2],  na.rm= TRUE)))
+## 28 variables - remove the last QU_
+mean(as.numeric(Dest[,c(1:27)]))
+## [1] 8.246513
+
+##Caribou BRB Trend Roman - example for one burst Car014 using an average diffusion coefficient
+udx <- BRB(CaribouTR.ltraj[1], D = 8.25, Tmax = 1500*60, Lmin = 2, hmin = 20, type = "UD", grid = 4000)
+
+
+# Create list of polygons of different isopleths
+SPDF = list()
+Levels = seq(95,50,by = -5)
+for (j in 1 : length(Levels)){
+  cat(j,"\n")
+# extract every isopleth of level j
+  verBRB <- getverticeshr(udx,percent = Levels[j])
+# list of every polygons made with each contour level
+  SPDF[[j]] = verBRB
+  names(SPDF)[j] = Levels[j]
+}
+
+# set shading colours for every contour lines
+cols = colorRampPalette(c("yellow","red"))
+cols = cols(length(SPDF))
+
+# borders of every isopleth
+bord = 'NA'
+# export results on a single plot by overlapping polygons
+plot(SPDF[[1]],col = cols[1],border = bord, axes = F,
+main = " BRB_Tmax = 25 hours ")
+for (i in 2 : length(SPDF)){
+plot(SPDF[[i]],col = cols[i],border = bord, add = T)
+}
+
+
+
+
+```
+
+# BRB Individuals: Site, year, and season
+A BRB calculation for the individuals in each site across years and by season is to be calculated. Some individuals will have <5 points, which is a minumum for UD calculation and will be set for the BRB to be weighted in post-range calculations. The individual animal trajectories are stored in list trajectories with years forming the list elements:
+
+Bullmoose: BM_WI_Traj # Winter, BM_CA_Traj # Calving, BM_SU_Traj # Summer, BM_RU_Traj # Rutting
+Trend Roman: TR_WI_Traj # Winter, TR_CA_Traj # Calving, TR_SU_Traj # Summer, TR_RU_Traj # Rutting
+
+Note that Dr=c(2,7) is used in the likelihood estimate of the diffusion coefficient. A minumum of 2 m / s2 is used given that Lmin = 2, and a maximum of 7 m / s2 is selected. This is partly based on the linear running speed of a caribou of 80 km / hr (http://www.ultimateungulate.com/Artiodactyla/Rangifer_tarandus.html#:~:text=During%20these%20migrations%2C%20herds%20move,bone%20producing%20a%20clicking%20sound.) =~ 22 m/s. Diffusion rate should be lower than the maximum running speed. Habitat patch visit time is set to 25 hrs, but a caribou cannot run full speed for 25 hrs. An upper diffusion rate of 7 m2 / s is a guess that will vary by resource density (see: https://atrium.lib.uoguelph.ca/xmlui/bitstream/handle/10214/5293/Avgar_Tal_201301_PhD.pdf?sequence=1 ). Note that diffusion and running speed are not the same thing, but I explore the running speed to ballpark or guess rates. In bison, the numbers are between 5-7 m2 / s (Celange 2019). Ferguson, S. H., & Elkie, P. C. (2004). Seasonal movement patterns of woodland caribou (Rangifer tarandus caribou). Journal of Zoology, 262(2), 125–134. estimate "Movement rate was greatest for early winter (2.5 km/day) and spring (1.8 km/day) relative to late winter (0.9 km/day), calving (1.1 km/day), and postcalving (1.3 km/day; Table 1)." Using: Winter = 2.5 km / day * 24*60*60 / 1000 = 1.74 m/min or 0.03 m / s, which is sqrt(7 m2/s / 0.03 m/s) = 15 m/s (i.e., a high average travelling speed, such as a trot).
+
+
+```{r echo=FALSE}
+
+## BM Winter
+
+## D: diffusion parameter - using ML function:
+
+DLik_BM_WI <- list()
+tally = 1
+BM_WI_Traj <- BM_WI_Traj[order(names(BM_WI_Traj))]
+
+for(t in 1:length(BM_WI_Traj)){
+  DLik_BM_WI[[tally]] <- BRB.likD(BM_WI_Traj[[t]], Tmax=1500*60, Lmin=2,  Dr=c(2,7))
+  tally = tally + 1
+}
+## DLik_...computes a list of each animal n = observations during the time interval [0,Ttotal], and D- diffusion parameter. See: Horne, J.S., Garton, E.O., Krone, S.M. and Lewis, J.S. 2007. Analyzing animal movements using Brownian bridges. Ecology, 88, 2354–235
+## These are contained in a list by year
+
+## Obtain the D estimates per individual from the DLik lists and incorporate into the BRB UD models:
+BRBs_BM_WI <- list()
+tally = 1
+name_burst <- list()
+BRB_area <- data.frame(matrix(ncol=4))
+colnames(BRB_area) <- c("id", "year", "area", "nb.reloc")
+
+## Continue from number:length(BM_WI_Traj) - set the number to start at a different year to manage data memory issues.
+
+for(i in 1:length(BM_WI_Traj)){
+  for(x in 1:length(DLik_BM_WI[[i]])){
+   assign("tempD",unlist(DLik_BM_WI[[i]][x]))
+   BRBs_BM_WI[[tally]] <- BRB(BM_WI_Traj[[i]][x], D = as.numeric(tempD[2]), Tmax = 1500*60, Lmin = 2, hmin = 20, type = "UD", grid = 4000)
+   name_burst[[tally]] <- adehabitatLT::burst(BM_WI_Traj[[i]][x])
+   #vud <- getvolumeUD(BRBs_BM_WI[[tally]]) # gums up with memory - too many at once
+   homerange <- getverticeshr(BRBs_BM_WI[[tally]])
+   #homerange[[1]][1] = name_burst[[tally]] ## to set the name, but is is not needed.
+   homerangedf <- as.data.frame(homerange)
+   BRB_area[tally,c(1:4)] <- rbind(data.frame(id = name_burst[[tally]], year = substr(names(BM_WI_Traj[i]),7,11), area = homerangedf[,2], nb.reloc = nrow(BM_WI_Traj[[i]][[x]]))) ## Cheat +1 to set year, because there is no data in 2002. Fix later.
+   #jpeg(paste0(here("BRB_UDs"), "/BRB_", name_burst[[tally]], ".jpg", sep="")) # Gums up with memory - too many at once, so I just work with the shapefile.
+   writeOGR(homerange,file.path(here("BRB_UDs")),paste0("BM_WI_",substr(names(BM_WI_Traj[i]),7,11),"_",name_burst[[tally]]), driver="ESRI Shapefile", overwrite_layer=TRUE)
+   tally = tally + 1
+  }
+}
+
+write.csv(BRB_area, paste0(here("BRB_UDs"), "/BM_WI_BRB_areas.csv", sep=""), row.names = FALSE)
+
+## BM Calving
+DLik_BM_CA <- list()
+tally = 1
+BM_CA_Traj <- BM_CA_Traj[order(names(BM_CA_Traj))]
+
+for(t in 1:length(BM_CA_Traj)){
+  DLik_BM_CA[[tally]] <- BRB.likD(BM_CA_Traj[[t]], Tmax=1500*60, Lmin=2,  Dr=c(2,7))
+  tally = tally + 1
+}
+
+BRBs_BM_CA <- list()
+tally = 1
+name_burst <- list()
+BRB_area <- data.frame(matrix(ncol=4))
+colnames(BRB_area) <- c("id", "year", "area", "nb.reloc")
+
+BM_CA_Traj = BM_CA_Traj[order(names(BM_CA_Traj))]
+
+for(i in 1:length(BM_CA_Traj)){
+  for(x in 1:length(DLik_BM_CA[[i]])){
+   assign("tempD",unlist(DLik_BM_CA[[i]][x]))
+   BRBs_BM_CA[[tally]] <- BRB(BM_CA_Traj[[i]][x], D = as.numeric(tempD[2]), Tmax = 1500*60, Lmin = 2, hmin = 20, type = "UD", grid = 4000)
+   name_burst[[tally]] <- adehabitatLT::burst(BM_CA_Traj[[i]][x])
+   #vud <- getvolumeUD(BRBs_BM_CA[[tally]]) # gums up with memory - too many at once
+   homerange <- getverticeshr(BRBs_BM_CA[[tally]])
+   #homerange[[1]][1] = name_burst[[tally]] ## to set the name, but is is not needed.
+   homerangedf <- as.data.frame(homerange)
+   BRB_area[tally,c(1:4)] <- rbind(data.frame(id = name_burst[[tally]], year = substr(names(BM_CA_Traj[i]),7,11), area = homerangedf[,2], nb.reloc = nrow(BM_CA_Traj[[i]][[x]]))) ## Cheat +1 to set year, because there is no data in 2002. Fix later.
+   #jpeg(paste0(here("BRB_UDs"), "/BRB_", name_burst[[tally]], ".jpg", sep="")) # Gums up with memory - too many at once, so I just work with the shapefile.
+   writeOGR(homerange,file.path(here("BRB_UDs")),paste0("BM_CA_",substr(names(BM_CA_Traj[i]),7,11),"_",name_burst[[tally]]), driver="ESRI Shapefile", overwrite_layer=TRUE)
+   tally = tally + 1
+  }
+}
+
+write.csv(BRB_area, paste0(here("BRB_UDs"), "/BM_CA_BRB_areas.csv", sep=""), row.names = FALSE)
+
+
+## BM Summer
+DLik_BM_SU <- list()
+tally = 1
+BM_SU_Traj <- BM_SU_Traj[order(names(BM_SU_Traj))]
+
+for(t in 1:length(BM_SU_Traj)){
+  DLik_BM_SU[[tally]] <- BRB.likD(BM_SU_Traj[[t]], Tmax=1500*60, Lmin=2,  Dr=c(2,7))
+  tally = tally + 1
+}
+
+BRBs_BM_SU <- list()
+tally = 1
+name_burst <- list()
+BRB_area <- data.frame(matrix(ncol=4))
+colnames(BRB_area) <- c("id", "year", "area", "nb.reloc")
+
+for(i in 7:length(BM_SU_Traj)){
+  for(x in 1:length(DLik_BM_SU[[i]])){ ## ADJUST HERE - FIX after inspection from where we left off >2010 needed.
+   assign("tempD",unlist(DLik_BM_SU[[i]][x]))
+   BRBs_BM_SU[[tally]] <- BRB(BM_SU_Traj[[i]][x], D = as.numeric(tempD[2]), Tmax = 1500*60, Lmin = 2, hmin = 20, type = "UD", grid = 4000)
+   name_burst[[tally]] <- adehabitatLT::burst(BM_SU_Traj[[i]][x])
+   #vud <- getvolumeUD(BRBs_BM_SU[[tally]]) # gums up with memory - too many at once
+   homerange <- getverticeshr(BRBs_BM_SU[[tally]])
+   #homerange[[1]][1] = name_burst[[tally]] ## to set the name, but is is not needed.
+   homerangedf <- as.data.frame(homerange)
+   BRB_area[tally,c(1:4)] <- rbind(data.frame(id = name_burst[[tally]], year = substr(names(BM_SU_Traj[i]),7,11), area = homerangedf[,2], nb.reloc = nrow(BM_SU_Traj[[i]][[x]]))) ## Cheat +1 to set year, because there is no data in 2002. Fix later.
+   #jpeg(paste0(here("BRB_UDs"), "/BRB_", name_burst[[tally]], ".jpg", sep="")) # Gums up with memory - too many at once, so I just work with the shapefile.
+   writeOGR(homerange,file.path(here("BRB_UDs")),paste0("BM_SU_",substr(names(BM_SU_Traj[i]),7,11),"_",name_burst[[tally]]), driver="ESRI Shapefile", overwrite_layer=TRUE)
+   tally = tally + 1
+   if(x > 4){break}
+  }
+}
+
+write.csv(BRB_area, paste0(here("BRB_UDs"), "/BM_SU_BRB_areas.csv", sep=""), row.names = FALSE)
+
+## BM Rutting
+DLik_BM_RU <- list()
+tally = 1
+BM_RU_Traj <- BM_RU_Traj[order(names(BM_RU_Traj))]
+
+for(t in 1:length(BM_RU_Traj)){
+  DLik_BM_RU[[tally]] <- BRB.likD(BM_RU_Traj[[t]], Tmax=1500*60, Lmin=2,  Dr=c(2,7))
+  tally = tally + 1
+}
+
+BRBs_BM_RU <- list()
+tally = 1
+name_burst <- list()
+BRB_area <- data.frame(matrix(ncol=4))
+colnames(BRB_area) <- c("id", "year", "area", "nb.reloc")
+
+for(i in 12:length(BM_RU_Traj)){
+  for(x in 1:length(DLik_BM_RU[[i]])){
+   assign("tempD",unlist(DLik_BM_RU[[i]][x]))
+   BRBs_BM_RU[[tally]] <- BRB(BM_RU_Traj[[i]][x], D = as.numeric(tempD[2]), Tmax = 1500*60, Lmin = 2, hmin = 20, type = "UD", grid = 4000)
+   name_burst[[tally]] <- adehabitatLT::burst(BM_RU_Traj[[i]][x])
+   #vud <- getvolumeUD(BRBs_BM_RU[[tally]]) # gums up with memory - too many at once
+   homerange <- getverticeshr(BRBs_BM_RU[[tally]])
+   #homerange[[1]][1] = name_burst[[tally]] ## to set the name, but is is not needed.
+   homerangedf <- as.data.frame(homerange)
+   BRB_area[tally,c(1:4)] <- rbind(data.frame(id = name_burst[[tally]], year = substr(names(BM_RU_Traj[i]),7,11), area = homerangedf[,2], nb.reloc = nrow(BM_RU_Traj[[i]][[x]]))) ## Cheat +1 to set year, because there is no data in 2002. Fix later.
+   #jpeg(paste0(here("BRB_UDs"), "/BRB_", name_burst[[tally]], ".jpg", sep="")) # Gums up with memory - too many at once, so I just work with the shapefile.
+   writeOGR(homerange,file.path(here("BRB_UDs")),paste0("BM_RU_",substr(names(BM_RU_Traj[i]),7,11),"_",name_burst[[tally]]), driver="ESRI Shapefile", overwrite_layer=TRUE)
+   tally = tally + 1
+  }
+}
+
+write.csv(BRB_area, paste0(here("BRB_UDs"), "/BM_RU_BRB_areas.csv", sep=""), row.names = FALSE)
+
+## TR Winter
+DLik_TR_WI <- list()
+tally = 1
+
+for(t in 1:length(TR_WI_Traj)){
+  DLik_TR_WI[[tally]] <- BRB.likD(TR_WI_Traj[[t]], Tmax=1500*60, Lmin=2,  Dr=c(2,7))
+  tally = tally + 1
+}
+
+BRBs_TR_WI <- list()
+tally = 1
+name_burst <- list()
+BRB_area <- data.frame(matrix(ncol=4))
+colnames(BRB_area) <- c("id", "year", "area", "nb.reloc")
+
+for(i in 1:length(TR_WI_Traj)){
+  for(x in 1:length(DLik_TR_WI[[i]])){
+   assign("tempD",unlist(DLik_TR_WI[[i]][x]))
+   BRBs_TR_WI[[tally]] <- BRB(TR_WI_Traj[[i]][x], D = as.numeric(tempD[2]), Tmax = 1500*60, Lmin = 2, hmin = 20, type = "UD", grid = 4000)
+   name_burst[[tally]] <- adehabitatLT::burst(TR_WI_Traj[[i]][x])
+   #vud <- getvolumeUD(BRBs_TR_WI[[tally]]) # gums up with memory - too many at once
+   homerange <- getverticeshr(BRBs_TR_WI[[tally]])
+   #homerange[[1]][1] = name_burst[[tally]] ## to set the name, but is is not needed.
+   homerangedf <- as.data.frame(homerange)
+   BRB_area[tally,c(1:4)] <- rbind(data.frame(id = name_burst[[tally]], year = substr(names(TR_WI_Traj[i]),7,11), area = homerangedf[,2], nb.reloc = nrow(TR_WI_Traj[[i]][[x]]))) ## Cheat +1 to set year, because there is no data in 2002. Fix later.
+   #jpeg(paste0(here("BRB_UDs"), "/BRB_", name_burst[[tally]], ".jpg", sep="")) # Gums up with memory - too many at once, so I just work with the shapefile.
+   writeOGR(homerange,file.path(here("BRB_UDs")),paste0("TR_WI_",substr(names(TR_WI_Traj[i]),7,11),"_",name_burst[[tally]]), driver="ESRI Shapefile", overwrite_layer=TWIE)
+   tally = tally + 1
+  }
+}
+
+write.csv(BRB_area, paste0(here("BRB_UDs"), "/TR_WI_BRB_areas.csv", sep=""), row.names = FALSE)
+
+## TR Calving
+DLik_TR_CA <- list()
+tally = 1
+
+for(t in 1:length(TR_CA_Traj)){
+  DLik_TR_CA[[tally]] <- BRB.likD(TR_CA_Traj[[t]], Tmax=1500*60, Lmin=2,  Dr=c(2,7))
+  tally = tally + 1
+}
+
+BRBs_TR_CA <- list()
+tally = 1
+name_burst <- list()
+BRB_area <- data.frame(matrix(ncol=4))
+colnames(BRB_area) <- c("id", "year", "area", "nb.reloc")
+
+for(i in 14:length(TR_CA_Traj)){
+  for(x in 1:length(DLik_TR_CA[[i]])){
+   assign("tempD",unlist(DLik_TR_CA[[i]][x]))
+   BRBs_TR_CA[[tally]] <- BRB(TR_CA_Traj[[i]][x], D = as.numeric(tempD[2]), Tmax = 1500*60, Lmin = 2, hmin = 20, type = "UD", grid = 4000)
+   name_burst[[tally]] <- adehabitatLT::burst(TR_CA_Traj[[i]][x])
+   #vud <- getvolumeUD(BRBs_TR_CA[[tally]]) # gums up with memory - too many at once
+   homerange <- getverticeshr(BRBs_TR_CA[[tally]])
+   #homerange[[1]][1] = name_burst[[tally]] ## to set the name, but is is not needed.
+   homerangedf <- as.data.frame(homerange)
+   BRB_area[tally,c(1:4)] <- rbind(data.frame(id = name_burst[[tally]], year = substr(names(TR_CA_Traj[i]),7,11), area = homerangedf[,2], nb.reloc = nrow(TR_CA_Traj[[i]][[x]]))) ## Cheat +1 to set year, because there is no data in 2002. Fix later.
+   #jpeg(paste0(here("BRB_UDs"), "/BRB_", name_burst[[tally]], ".jpg", sep="")) # Gums up with memory - too many at once, so I just work with the shapefile.
+   writeOGR(homerange,file.path(here("BRB_UDs")),paste0("TR_CA_",substr(names(TR_CA_Traj[i]),7,11),"_",name_burst[[tally]]), driver="ESRI Shapefile", overwrite_layer=TRUE)
+   tally = tally + 1
+  }
+}
+
+write.csv(BRB_area, paste0(here("BRB_UDs"), "/TR_CA_BRB_areasc.csv", sep=""), row.names = FALSE)
+
+## TR Summer
+DLik_TR_SU <- list()
+tally = 1
+
+for(t in 1:length(TR_SU_Traj)){
+  DLik_TR_SU[[tally]] <- BRB.likD(TR_SU_Traj[[t]], Tmax=1500*60, Lmin=2,  Dr=c(2,7))
+  tally = tally + 1
+}
+
+BRBs_TR_SU <- list()
+tally = 1
+name_burst <- list()
+BRB_area <- data.frame(matrix(ncol=4))
+colnames(BRB_area) <- c("id", "year", "area", "nb.reloc")
+
+for(i in 1:length(TR_SU_Traj)){
+  for(x in 1:length(DLik_TR_SU[[i]])){
+   assign("tempD",unlist(DLik_TR_SU[[i]][x]))
+   BRBs_TR_SU[[tally]] <- BRB(TR_SU_Traj[[i]][x], D = as.numeric(tempD[2]), Tmax = 1500*60, Lmin = 2, hmin = 20, type = "UD", grid = 4000)
+   name_burst[[tally]] <- adehabitatLT::burst(TR_SU_Traj[[i]][x])
+   #vud <- getvolumeUD(BRBs_TR_SU[[tally]]) # gums up with memory - too many at once
+   homerange <- getverticeshr(BRBs_TR_SU[[tally]])
+   #homerange[[1]][1] = name_burst[[tally]] ## to set the name, but is is not needed.
+   homerangedf <- as.data.frame(homerange)
+   BRB_area[tally,c(1:4)] <- rbind(data.frame(id = name_burst[[tally]], year = substr(names(TR_SU_Traj[i]),7,11), area = homerangedf[,2], nb.reloc = nrow(TR_SU_Traj[[i]][[x]]))) ## Cheat +1 to set year, because there is no data in 2002. Fix later.
+   #jpeg(paste0(here("BRB_UDs"), "/BRB_", name_burst[[tally]], ".jpg", sep="")) # Gums up with memory - too many at once, so I just work with the shapefile.
+   writeOGR(homerange,file.path(here("BRB_UDs")),paste0("TR_SU_",substr(names(TR_SU_Traj[i]),7,11),"_",name_burst[[tally]]), driver="ESRI Shapefile", overwrite_layer=TSUE)
+   tally = tally + 1
+  }
+}
+
+write.csv(BRB_area, paste0(here("BRB_UDs"), "/TR_SU_BRB_areas.csv", sep=""), row.names = FALSE)
+
+## TR Rutting
+DLik_TR_RU <- list()
+tally = 1
+
+for(t in 1:length(TR_RU_Traj)){
+  DLik_TR_RU[[tally]] <- BRB.likD(TR_RU_Traj[[t]], Tmax=1500*60, Lmin=2,  Dr=c(2,7))
+  tally = tally + 1
+}
+
+BRBs_TR_RU <- list()
+tally = 1
+name_burst <- list()
+BRB_area <- data.frame(matrix(ncol=4))
+colnames(BRB_area) <- c("id", "year", "area", "nb.reloc")
+
+for(i in 8:length(TR_RU_Traj)){
+  for(x in 1:length(DLik_TR_RU[[i]])){
+   assign("tempD",unlist(DLik_TR_RU[[i]][x]))
+   BRBs_TR_RU[[tally]] <- BRB(TR_RU_Traj[[i]][x], D = as.numeric(tempD[2]), Tmax = 1500*60, Lmin = 2, hmin = 20, type = "UD", grid = 4000)
+   name_burst[[tally]] <- adehabitatLT::burst(TR_RU_Traj[[i]][x])
+   #vud <- getvolumeUD(BRBs_TR_RU[[tally]]) # gums up with memory - too many at once
+   homerange <- getverticeshr(BRBs_TR_RU[[tally]])
+   #homerange[[1]][1] = name_burst[[tally]] ## to set the name, but is is not needed.
+   homerangedf <- as.data.frame(homerange)
+   BRB_area[tally,c(1:4)] <- rbind(data.frame(id = name_burst[[tally]], year = substr(names(TR_RU_Traj[i]),7,11), area = homerangedf[,2], nb.reloc = nrow(TR_RU_Traj[[i]][[x]]))) ## Cheat +1 to set year, because there is no data in 2002. Fix later.
+   #jpeg(paste0(here("BRB_UDs"), "/BRB_", name_burst[[tally]], ".jpg", sep="")) # Gums up with memory - too many at once, so I just work with the shapefile.
+   writeOGR(homerange,file.path(here("BRB_UDs")),paste0("TR_RU_",substr(names(TR_RU_Traj[i]),7,11),"_",name_burst[[tally]]), driver="ESRI Shapefile", overwrite_layer=TRUE)
+   tally = tally + 1
+  }
+}
+
+write.csv(BRB_area, paste0(here("BRB_UDs"), "/TR_RU_BRB_areas.csv", sep=""), row.names = FALSE)
+
+```
+
+## The BRB calculations sometimes require loop chunks as the computer runs out of memory. The code chunk below reads in the outputs, re-calculates the areas, and tables the details for all UDs - including the aggregate kernel-UDs.
+
+```{r echo=FALSE}
+
+
+## Bullmoose WI Table
+BMBRBs <- gsub(".shp", "",dir(here("BRB_UDs"), pattern="^(BM_WI_).{1,}(shp)"))
+
+BRB_area <- data.frame(matrix(ncol=6))
+colnames(BRB_area) <- c("SA", "season", "AnimalID", "year", "area", "nb.reloc")
+BM_WI_Traj <- BM_WI_Traj[order(names(BM_WI_Traj))]
+
+tally = 1
+starti <- 1
+
+for(i in 1:length(BMBRBs)){
+  if(tally <= length(BMBRBs)){
+    for(x in 1:length(BM_WI_Traj[[starti]])){
+      tempv <- vect(paste0(here("BRB_UDs"),"/",BMBRBs[tally],".shp"))  
+      burstn <- matrix(ncol=1)
+      burstn[x] <- nrow(BM_WI_Traj[[starti]][[x]])
+      BRB_area[tally,c(1:6)] <- rbind(data.frame(SA = "BM", season = "WI", AnimalID = str_sub(BMBRBs[[tally]],12), year = substr(names(BM_WI_Traj[i]),7,11), area = expanse(tempv) / 10000, nb.reloc = burstn[x])) ## I checked that sBMBRBs match ltraj bursts. Ignore expanse warning - I checked.
+      tally = tally + 1
+    }
+    starti = starti + 1
+    if(tally > length(BMBRBs)){break}
+  }
+  else{break}
+}
+
+write.csv(BRB_area, paste0(here("BRB_UDs"), "/BM_WI_BRB_FIN.csv", sep=""), row.names = FALSE)
+
+## Bullmoose CA Table
+BMBRBs <- gsub(".shp", "",dir(here("BRB_UDs"), pattern="^(BM_CA_).{1,}(shp)"))
+
+BRB_area <- data.frame(matrix(ncol=6))
+colnames(BRB_area) <- c("SA", "season", "AnimalID", "year", "area", "nb.reloc")
+BM_CA_Traj <- BM_CA_Traj[order(names(BM_CA_Traj))]
+tally = 1
+starti <- 1
+
+for(i in 1:length(BMBRBs)){
+  if(tally <= length(BMBRBs)){
+    for(x in 1:length(BM_CA_Traj[[starti]])){
+      tempv <- vect(paste0(here("BRB_UDs"),"/",BMBRBs[tally],".shp"))  
+      burstn <- matrix(ncol=1)
+      burstn[x] <- nrow(BM_CA_Traj[[starti]][[x]])
+      BRB_area[tally,c(1:6)] <- rbind(data.frame(SA = "BM", season = "CA", AnimalID = str_sub(BMBRBs[[tally]],12), year = substr(names(BM_CA_Traj[i]),7,11), area = expanse(tempv) / 10000, nb.reloc = burstn[x])) ## I checked that sBMBRBs match ltraj bursts. Ignore expanse warning - I checked.
+      tally = tally + 1
+    }
+    starti = starti + 1
+    if(tally > length(BMBRBs)){break}
+  }
+  else{break}
+}
+
+write.csv(BRB_area, paste0(here("BRB_UDs"), "/BM_CA_BRB_FIN.csv", sep=""), row.names = FALSE)
+
+## Bullmoose SU Table
+BMBRBs <- gsub(".shp", "",dir(here("BRB_UDs"), pattern="^(BM_SU_).{1,}(shp)"))
+
+BRB_area <- data.frame(matrix(ncol=6))
+colnames(BRB_area) <- c("SA", "season", "AnimalID", "year", "area", "nb.reloc")
+BM_SU_Traj <- BM_SU_Traj[order(names(BM_SU_Traj))]
+tally <- 1
+starti <- 1
+break.out.of.for = FALSE
+
+for(i in 1:length(BMBRBs)){
+    for(x in 1:length(BM_SU_Traj[[starti]])){
+        if(tally > length(BMBRBs)){
+            break.out.of.for = TRUE
+            break}
+      tempv <- vect(paste0(here("BRB_UDs"),"/",BMBRBs[tally],".shp"))  
+      burstn <- matrix(ncol=1)
+      burstn[x] <- nrow(BM_SU_Traj[[starti]][[x]])
+      BRB_area[tally,c(1:6)] <- rbind(data.frame(SA = "BM", season = "SU", AnimalID = str_sub(BMBRBs[[tally]],12), year = substr(names(BM_SU_Traj[i]),7,11), area = expanse(tempv) / 10000, nb.reloc = burstn[x])) ## I checked that sBMBRBs match ltraj bursts. Ignore expanse warning - I checked.
+      tally = tally + 1
+
+    }
+  if(break.out.of.for){break()}
+  starti = starti + 1
+}
+
+write.csv(BRB_area, paste0(here("BRB_UDs"), "/BM_SU_BRB_FIN.csv", sep=""), row.names = FALSE)
+
+## Bullmoose RU Table
+BMBRBs <- gsub(".shp", "",dir(here("BRB_UDs"), pattern="^(BM_RU_).{1,}(shp)"))
+
+BRB_area <- data.frame(matrix(ncol=6))
+colnames(BRB_area) <- c("SA", "season", "AnimalID", "year", "area", "nb.reloc")
+BM_RU_Traj <- BM_RU_Traj[order(names(BM_RU_Traj))]
+tally = 1
+starti <- 1
+break.out.of.for = FALSE
+
+for(i in 1:length(BMBRBs)){
+    for(x in 1:length(BM_RU_Traj[[starti]])){
+        if(tally > length(BMBRBs)){
+            break.out.of.for = TRUE
+            break}
+      tempv <- vect(paste0(here("BRB_UDs"),"/",BMBRBs[tally],".shp"))  
+      burstn <- matrix(ncol=1)
+      burstn[x] <- nrow(BM_RU_Traj[[starti]][[x]])
+      BRB_area[tally,c(1:6)] <- rbind(data.frame(SA = "BM", season = "RU", AnimalID = str_sub(BMBRBs[[tally]],12), year = substr(names(BM_RU_Traj[i]),7,11), area = expanse(tempv) / 10000, nb.reloc = burstn[x])) ## I checked that sBMBRBs match ltraj bursts. Ignore expanse warning - I checked.
+      tally = tally + 1
+
+    }
+  if(break.out.of.for){break()}
+  starti = starti + 1
+}
+
+write.csv(BRB_area, paste0(here("BRB_UDs"), "/BM_RU_BRB_FIN.csv", sep=""), row.names = FALSE)
+
+## Roman WI Table
+TRBRBs <- gsub(".shp", "",dir(here("BRB_UDs"), pattern="^(TR_WI_).{1,}(shp)"))
+
+BRB_area <- data.frame(matrix(ncol=6))
+TR_WI_Traj <- TR_WI_Traj[order(names(TR_WI_Traj))]
+colnames(BRB_area) <- c("SA", "season", "AnimalID", "year", "area", "nb.reloc")
+tally = 1
+starti <- 1
+
+for(i in 1:length(TRBRBs)){
+  if(tally <= length(TRBRBs)){
+    for(x in 1:length(TR_WI_Traj[[starti]])){
+      tempv <- vect(paste0(here("BRB_UDs"),"/",TRBRBs[tally],".shp"))  
+      burstn <- matrix(ncol=1)
+      burstn[x] <- nrow(TR_WI_Traj[[starti]][[x]])
+      BRB_area[tally,c(1:6)] <- rbind(data.frame(SA = "TR", season = "WI", AnimalID = str_sub(TRBRBs[[tally]],12), year = substr(names(TR_WI_Traj[i]),7,11), area = expanse(tempv) / 10000, nb.reloc = burstn[x])) ## I checked that sTRBRBs match ltraj bursts. Ignore expanse warning - I checked.
+      tally = tally + 1
+    }
+    starti = starti + 1
+    if(tally > length(BMBRBs)){break}
+  }
+  else{break}
+}
+
+write.csv(BRB_area, paste0(here("BRB_UDs"), "/TR_WI_BRB_FIN.csv", sep=""), row.names = FALSE)
+
+## Roman CA Table
+TRBRBs <- gsub(".shp", "",dir(here("BRB_UDs"), pattern="^(TR_CA_).{1,}(shp)"))
+
+BRB_area <- data.frame(matrix(ncol=6))
+colnames(BRB_area) <- c("SA", "season", "AnimalID", "year", "area", "nb.reloc")
+TR_CA_Traj <- TR_CA_Traj[order(names(TR_CA_Traj))]
+tally = 1
+starti <- 1
+
+for(i in 1:length(TRBRBs)){
+  if(tally <= length(TRBRBs)){
+    for(x in 1:length(TR_CA_Traj[[starti]])){
+      tempv <- vect(paste0(here("BRB_UDs"),"/",TRBRBs[tally],".shp"))  
+      burstn <- matrix(ncol=1)
+      burstn[x] <- nrow(TR_CA_Traj[[starti]][[x]])
+      BRB_area[tally,c(1:6)] <- rbind(data.frame(SA = "TR", season = "CA", AnimalID = str_sub(TRBRBs[[tally]],12), year = substr(names(TR_CA_Traj[i]),7,11), area = expanse(tempv) / 10000, nb.reloc = burstn[x])) ## I checked that sTRBRBs match ltraj bursts. Ignore expanse warning - I checked.
+      tally = tally + 1
+    }
+    starti = starti + 1
+    if(tally > length(BMBRBs)){break}
+  }
+  else{break}
+}
+
+write.csv(BRB_area, paste0(here("BRB_UDs"), "/TR_CA_BRB_FIN.csv", sep=""), row.names = FALSE)
+
+## Roman SU Table
+TRBRBs <- gsub(".shp", "",dir(here("BRB_UDs"), pattern="^(TR_SU_).{1,}(shp)"))
+
+BRB_area <- data.frame(matrix(ncol=6))
+colnames(BRB_area) <- c("SA", "season", "AnimalID", "year", "area", "nb.reloc")
+TR_SU_Traj <- TR_SU_Traj[order(names(TR_SU_Traj))]
+tally = 1
+starti <- 1
+
+for(i in 1:length(TRBRBs)){
+  if(tally <= length(TRBRBs)){
+    for(x in 1:length(TR_SU_Traj[[starti]])){
+      tempv <- vect(paste0(here("BRB_UDs"),"/",TRBRBs[tally],".shp"))  
+      burstn <- matrix(ncol=1)
+      burstn[x] <- nrow(TR_SU_Traj[[starti]][[x]])
+      BRB_area[tally,c(1:6)] <- rbind(data.frame(SA = "TR", season = "SU", AnimalID = str_sub(TRBRBs[[tally]],12), year = substr(names(TR_SU_Traj[i]),7,11), area = expanse(tempv) / 10000, nb.reloc = burstn[x])) ## I checked that sTRBRBs match ltraj bursts. Ignore expanse warning - I checked.
+      tally = tally + 1
+    }
+    starti = starti + 1
+    if(tally > length(BMBRBs)){break}
+  }
+  else{break}
+}
+
+write.csv(BRB_area, paste0(here("BRB_UDs"), "/TR_SU_BRB_FIN.csv", sep=""), row.names = FALSE)
+
+
+## Roman RU Table
+TRBRBs <- gsub(".shp", "",dir(here("BRB_UDs"), pattern="^(TR_RU_).{1,}(shp)"))
+
+BRB_area <- data.frame(matrix(ncol=6))
+colnames(BRB_area) <- c("SA", "season", "AnimalID", "year", "area", "nb.reloc")
+TR_RU_Traj <- TR_RU_Traj[order(names(TR_RU_Traj))]
+tally = 1
+starti <- 1
+
+for(i in 1:length(TRBRBs)){
+  if(tally <= length(TRBRBs)){
+    for(x in 1:length(TR_RU_Traj[[starti]])){
+      tempv <- vect(paste0(here("BRB_UDs"),"/",TRBRBs[tally],".shp"))  
+      burstn <- matrix(ncol=1)
+      burstn[x] <- nrow(TR_RU_Traj[[starti]][[x]])
+      BRB_area[tally,c(1:6)] <- rbind(data.frame(SA = "TR", season = "RU", AnimalID = str_sub(TRBRBs[[tally]],12), year = substr(names(TR_RU_Traj[i]),7,11), area = expanse(tempv) / 10000, nb.reloc = burstn[x])) ## I checked that sTRBRBs match ltraj bursts. Ignore expanse warning - I checked.
+      tally = tally + 1
+    }
+    starti = starti + 1
+    if(tally > length(BMBRBs)){break}
+  }
+  else{break}
+}
+
+write.csv(BRB_area, paste0(here("BRB_UDs"), "/TR_RU_BRB_FIN.csv", sep=""), row.names = FALSE)
+
+BM_WI_BRB_FIN <- read.csv(paste0(here("BRB_UDs"), "/BM_WI_BRB_FIN.csv"), stringsAsFactors = FALSE)
+BM_CA_BRB_FIN <- read.csv(paste0(here("BRB_UDs"), "/BM_CA_BRB_FIN.csv"), stringsAsFactors = FALSE)
+BM_SU_BRB_FIN <- read.csv(paste0(here("BRB_UDs"), "/BM_SU_BRB_FIN.csv"), stringsAsFactors = FALSE)
+BM_RU_BRB_FIN <- read.csv(paste0(here("BRB_UDs"), "/BM_RU_BRB_FIN.csv"), stringsAsFactors = FALSE)
+TR_WI_BRB_FIN <- read.csv(paste0(here("BRB_UDs"), "/TR_WI_BRB_FIN.csv"), stringsAsFactors = FALSE)
+TR_CA_BRB_FIN <- read.csv(paste0(here("BRB_UDs"), "/TR_CA_BRB_FIN.csv"), stringsAsFactors = FALSE)
+TR_SU_BRB_FIN <- read.csv(paste0(here("BRB_UDs"), "/TR_SU_BRB_FIN.csv"), stringsAsFactors = FALSE)
+TR_RU_BRB_FIN <- read.csv(paste0(here("BRB_UDs"), "/TR_RU_BRB_FIN.csv"), stringsAsFactors = FALSE)
+
+TabUD_area <- read.csv(file = paste0(here("adeHRoutput_noclip","Seasons"), "/Agg_UD_areas.csv"))
+TabUD_area$AnimalID <- "Aggregate"
+TabUD_area <- TabUD_area[,c(1,2,6,3:5)]
+
+RangeAreas <- rbind(TabUD_area,BM_WI_BRB_FIN,BM_CA_BRB_FIN,BM_SU_BRB_FIN,BM_RU_BRB_FIN,TR_WI_BRB_FIN,TR_CA_BRB_FIN,TR_SU_BRB_FIN,TR_RU_BRB_FIN)
+
+write.csv(RangeAreas, paste0(here("BRB_UDs"), "/Quintette_RangeAreas.csv", sep=""), row.names = FALSE)
+
+````
