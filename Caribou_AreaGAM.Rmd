@@ -29,12 +29,17 @@ library(lme4)
 
 ```
 
-## GAM
+## GAM Season Factor
+In this first analysis of the data I treated season as a factor variable, but this is incorrect. It is an ordered variable and can be modeled with GAMs (Jensen et al., 2022; Simpson 2014).
 
+#References
+Jensen, S. A., Webb, J. R., Simpson, G. L., Baulch, H. M., Leavitt, P. R., & Finlay, K. (2022). Seasonal variability of CO2, CH4, and N2O content and fluxes in small agricultural reservoirs of the northern Great Plains. Frontiers in Environmental Science, 10. https://doi.org/10.3389/fenvs.2022.895531
+
+Simpson, G.A. Modelling seasonal data with GAMs. Blog: From the bottom of the heap. https://fromthebottomoftheheap.net/2014/05/09/modelling-seasonal-data-with-gam/
 
 ```{r GAM, echo=FALSE}
 
-BMTR_sUDs_areas <- read.csv(paste0(here(),"/Agg_UD_areasWI.csv"),	stringsAsFactors=FALSE,	na.strings="NA")
+BMTR_sUDs_areas <- read.csv(paste0(here("adeHRoutput_noclip","Seasons"),"/Agg_UD_areasWI.csv"),	stringsAsFactors=FALSE,	na.strings="NA")
 
 ##Proceeding through exploratory examples from Zuur et al. (2009):
 
@@ -80,7 +85,9 @@ BMTR_sUDs_RUr <- BMTR_sUDs_areasr[which(BMTR_sUDs_areasr$season == "RU"),]
 
 ```
 
-Plots of core UD areas over time are heterogenous between seasons and between study areas. The question being asked is if there is a difference in the dynamics of area amount by season across years. The prediction is that the winter range will have larger areas where there is more disturbance as this will spread the individuals apart (dispersion) or drive them to move greater distances. Roman and Bullmoose are treated as independent factors.
+## GAMs
+
+Plots of core UD areas over time are heterogenous between seasons and between study areas. The question being asked is if there is a difference between TR and BM in the dynamics of area amount by season across years. The prediction is that the winter range will have larger areas where there is more disturbance as this will spread the individuals apart (dispersion) or drive them to move greater distances. Roman and Bullmoose (= SA, Study Area) are modeled as independent factors (i.e., the experimental treatment).
 
 ```{r}
 
@@ -287,6 +294,61 @@ GAMrur2 = gam(warea ~ s(SA, bs = 're') + s(yearf, bs = 're'),
 
 #AICtab(GAMrur1, GAMrur2, GAMrur3)
 #AIC(GAMrur1, GAMrur2, GAMrur3)
+
+```
+
+## GAM Season Ordered
+Season is analyzed as an ordered variable adapting method of Simpson (2014).
+
+#References
+
+Simpson, G.A. Modelling seasonal data with GAMs. Blog: From the bottom of the heap. https://fromthebottomoftheheap.net/2014/05/09/modelling-seasonal-data-with-gam/
+
+```{r GAM, echo=FALSE}
+
+BMTR_sUDs_areas <- read.csv(paste0(here("adeHRoutput_noclip","Seasons"),"/Agg_UD_areasWI.csv"),	stringsAsFactors=FALSE,	na.strings="NA")
+
+##Proceeding through exploratory examples from Zuur et al. (2009):
+
+dotchart(BMTR_sUDs_areas$area, groups= factor(BMTR_sUDs_areas$SA), pch = BMTR_sUDs_areas$SA, ylab = "Study Area", xlab = "Area", main = "Cleveland dotplot")
+
+BMTR_sUDs_areas$SA <- as.factor(BMTR_sUDs_areas$SA)
+BMTR_sUDs_areas$season <- as.factor(BMTR_sUDs_areas$season)
+BMTR_sUDs_areas$warea <- BMTR_sUDs_areas$area / BMTR_sUDs_areas$nb.reloc
+BMTR_sUDs_areas$yearf <- as.factor(BMTR_sUDs_areas$year)
+pairs(BMTR_sUDs_areas)
+
+source(paste0(here(),"/HighstatLibV10.R"))
+
+M1 <- lm(warea ~ year, subset = (BMTR_sUDs_areas$SA == "BM"), data = BMTR_sUDs_areas)
+op <- par(mfrow = c(2,2))
+plot(M1, add.smooth = FALSE)
+par(op)
+
+M2 <- lm(warea ~ year, subset = (BMTR_sUDs_areas$SA == "TR"), data = BMTR_sUDs_areas)
+op <- par(mfrow = c(2,2))
+plot(M2, add.smooth = FALSE)
+par(op)
+
+## Non-linear. There is Cooks distance beyond the threshold value of 1 (see Zuur et al. 2009) - needs to be managed. Item 33 in TR is highly problematic - will remove this one:
+
+BMTR_sUDs_areasr <- BMTR_sUDs_areas[c(1:32,34:133),]
+
+TR_sUDs_areasWIr <- BMTR_sUDs_areasr[which(BMTR_sUDs_areasr$SA == "TR" & BMTR_sUDs_areasr$season == "WI"),]
+BM_sUDs_areasWIr <- BMTR_sUDs_areasr[which(BMTR_sUDs_areasr$SA == "BM" & BMTR_sUDs_areasr$season == "WI"),]
+
+
+mean(TR_sUDs_areasWIr$area)
+mean(TR_sUDs_areasWIr$warea)
+mean(BM_sUDs_areasWIr$area)
+mean(BM_sUDs_areasWIr$warea)
+
+
+BMTR_sUDs_WIr <- BMTR_sUDs_areasr[which(BMTR_sUDs_areasr$season == "WI"),]
+BMTR_sUDs_CAr <- BMTR_sUDs_areasr[which(BMTR_sUDs_areasr$season == "CA"),]
+BMTR_sUDs_SUr <- BMTR_sUDs_areasr[which(BMTR_sUDs_areasr$season == "SU"),]
+BMTR_sUDs_RUr <- BMTR_sUDs_areasr[which(BMTR_sUDs_areasr$season == "RU"),]
+
 
 ```
 

@@ -59,9 +59,8 @@ Caribou_Quintette <- read.csv(paste0(here("Input Data"), "/Caribou_noclip.csv"))
 #Caribou_Quintette <- Caribou_Quintette[,c(1:3,5,7:8,4,10,9)]
 names(Caribou_Quintette)[names(Caribou_Quintette) == "Season2"] <- "season"
 
-## There was a mistake with Calvin and Calving
+## There was a mistake with Calvin and Calving, fixed:
 Caribou_Quintette[which(Caribou_Quintette$season == "Calvin"),4] <- "Calving"
-
 
 assign_seasonYR <- function(d) {
   ifelse(format(as.Date(d, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),"%m") == "11" & format(as.Date(d, format =  "%Y-%m-%d %H:%M:%S", tz = "GMT"),"%d") >= "1", as.numeric(format(as.Date(d, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),"%Y"))+1,
@@ -97,7 +96,7 @@ for(i in 2:length(CaribouBM.ltraj)) {
                          data.frame(CaribouBM.ltraj[[i]], id = attr(CaribouBM.ltraj[[i]], "id")))
 }
 
-# Calculate distance travelled per day and add it to the dataframe
+# Calculate distance traveled per day and add it to the dataframe
 total.path.df$distperday <- total.path.df$dist / (total.path.df$dt/60/60/24)
 
 # Aggregate to show mean distance per day for each animal

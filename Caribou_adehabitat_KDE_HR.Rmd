@@ -30,7 +30,7 @@ if(!require(rgdal)){install.packages("rgdal")}
 if(!require(maptools)){install.packages("maptools")}
 if(!require(adehabitatHR)){install.packages("adehabitatHR")}
 if(!require(raster)){install.packages("raster")}
-if(!require(BBMM)){install.packages("BBMM")}
+#if(!require(BBMM)){install.packages("BBMM")} #Removed from Cran
 if(!require(lunar)){install.packages("lunar")}
 if(!require(oce)){install.packages("oce")}
 if(!require(summarytools)){install.packages("summarytools")}
@@ -64,7 +64,7 @@ library(dismo)
 library(maptools)
 library(lubridate)
 library(rgdal)
-library(BBMM)
+#library(BBMM)
 library(lunar)
 library(oce)
 library(summarytools)
@@ -108,7 +108,7 @@ loc.output <- paste0("adeHRoutput/")
 
 ```
 
-h1{PART 1 - AdehabitatHR Script for KDE}
+#PART 1 - AdehabitatHR Script for KDE
 
 This code chunk establishes directory structure, reads in the telemetry data, and puts the timestamp into a common format ("%Y-%m-%d %H:%M:%S") to subset by the timestamp. The date that is used here (>= 2007-11-26) was discovered by visual inspection of the Bullmoose v. Trend Roman data that was being prepared for ddBBMM models. There is little overlap in the sampling intervals prior to the 2007 date.
 
@@ -167,8 +167,9 @@ Caribou <- rbind(Caribou, Caribou_gap)
 #Caribou <- Caribou[Caribou$timestamp >='2007-11-26 00:00:00',] ## Or skip to table hits by year
 
 ```
+# Updates
 
-On Aug 11, 2022 - Scott McNay sent a new excel file ("qttelemfinal6.csv") with cleaner telemetry data. This is the code for processing this into the existing script.
+On Aug 11, 2022 - Scott McNay sent a new excel file ("qttelemfinal6.csv") with updates to the telemetry data. This processes the updates into the existing script.
 
 ```{r Data_Inputs, echo=FALSE, results = "hide"}
 
@@ -192,8 +193,9 @@ Caribou <- Caribou[,c(3:6,13,8,10,11)]
 ```
 
 
-h2{Import the shapefiles of the study areas}
-## (SA) : BM = Bullmoose, TR = Trend Roman, "All" is BM+TR
+# Shapefile Imports
+
+Study Area (SA) : BM = Bullmoose, TR = Trend Roman, "All" is BM+TR
 
 ```{r Study_Areas, echo=FALSE, results = "hide"}
 
@@ -210,14 +212,16 @@ QU_TR_SA.shp <- spTransform(QU_TR.shp, crs.proj)
 Caribou_sp <- SpatialPointsDataFrame(Caribou[,c("E", "N")], Caribou)
 proj4string(Caribou_sp) <- crs.proj
 
-## By Study Area:
+# By Study Area:
 Caribou_sp <- Caribou_sp[QU_All_SA.shp, ] #All
 Caribou_BM_sp <- Caribou_sp[QU_BM_SA.shp, ] #Bullmoose
 Caribou_TR_sp <- Caribou_sp[QU_TR_SA.shp, ] #Trend Roman
 ```
 
-## Animals in study areas - these are animals in the clipped study area
-##
+## Animals in study areas
+
+Counts of individual animals in the respective study area.
+
 
 ```{r Animals, echo=FALSE, results = "hide"}
 
@@ -232,11 +236,10 @@ length(Animals_BM) ## 50 animals: without time reduction
 Animals_TR <- as.factor(unique(Caribou_TR_sp$AnimalID))
 length(Animals_TR) ## 28 animals: without time reduction
 
-
 ```
+# Extents and Outliers
 
-The following does not clip animals to the study area. Skip this chunk to keep the data trimmed to the perimeter for mapping purposes only. This chunk of code also determines the maximum extent of the points that are used later for trimming the raster images for movement distance analysis.
-
+Inspect the spatial points for outliers and calculate the maximum extents to later trim the raster images in movement distance analysis.
 
 
 ```{r}
@@ -298,18 +301,11 @@ min(Caribou_sp_BM_WI$E)
 #> min(Caribou_sp_BM_WI$E)
 #[1] 548112.1
 
-
 ```
 
+#Lag Calculation
 
-###################
-h2{Lag Calculation}
-
-After coding this in, I learned that lag and step can also be calculated using the move package: Section 5 Extracting temporal and spatial information of tracks
-https://cran.r-project.org/web/packages/move/vignettes/move.html
-
-However, these loops produce the same result. They calculate the lag time in minutes between sample intervals
-of the same animal. It puts each animal into a list with the lag time calculated. The first lag entry is marked "NA".
+The loops calculate lag time in minutes between sample intervals of the same animal. It puts each animal into a list with the lag time calculated. The first lag entry is marked "NA". As of May 27, 2023 the move package has been removed from cran for lack of maintenance, which had functions to complete the calculations scripted here. The data was compared in 2022 when package "move" was operational and the results were the same.
 
 ```{r Lag_Calc, echo=FALSE, results = "hide"}
 
@@ -361,10 +357,9 @@ for(n in 1:length(Animals_TR)){
 ```
 
 
-###################
-h2{Step Calculation}
+#Step Calculation
 
-It takes >30 minutes to compute this code chunk. This can be skipped by loading the files in lines 352 and 364 below, but all chunks above and those below prior to the UD calculations need to be re-run to enter into the UD calculations.
+It takes >30 minutes to compute this code chunk on my workstation. This part can be skipped by loading the files (read.csv) in the code section that follows, but all chunks above and those below prior to the UD calculations need to be re-run to complete the UD script and calculations.
 
 ```{r Step_calc, echo=FALSE, results = "hide"}
 
@@ -438,10 +433,11 @@ print(names(Caribou_TR))
 
 ```
 
-The animals are reset in this chunk after things have been vetted above. Depending on the list or threshold settings above, some animals can be removed. Hence, the reset needs to be performed.
+# Animal Tables
 
+The animals are tabled and set to factors. In earlier iterations adjustments were made on the list and threshold settings above, some animals were removed. Hence, the reset needs to be performed.
 
-```{r Table Animals, echo=FALSE, results = "hide"}
+```{r Animals, echo=FALSE, results = "hide"}
 QU_BM_tbl <- table(Caribou_BM$AnimalID)
 QU_TR_tbl <- table(Caribou_TR$AnimalID)
 
@@ -457,6 +453,8 @@ Animals_TR <- as.factor(unique(Caribou_TR$AnimalID))
 length(Animals_TR) ## 28 animals
 
 ```
+# Lag time outliers
+
 This code chunk inspects and removes extreme lag times (if needed), organizes the years, and creates an aggregated data set that includes all animals in the density function by year. Aggregated means that the spatial points are not tied to any individual. The individuals are aggregrated into a study area. All spatial points, even if from different animals, are aggregated together as Trend Roman or as Bullmoose.
 
 ```{r Trim 2Aggregate, echo=FALSE, results = "hide"}
@@ -499,7 +497,7 @@ Caribou_TR_Yrs <- unique(format(as.Date(Caribou_TR[,5], format="%Y-%m-%d %H:%M:%
 ## Creating the aggregated data & animals
 
 Animals_Agg <- c(Animals_BM,Animals_TR)
-length(Animals_Agg) ## 49 animals
+length(Animals_Agg) ## 75 animals
 
 ## Creating the Aggregrates
 Caribou_BM_Agg <- Caribou_BM
@@ -588,7 +586,7 @@ Create the seasons
 1. Winter, November 1 – April 30, %Y-11-01 to %Y-04-30
 2. Summer, May 1 - October 31, %Y-05-01 to %Y-10-31
 
-The data also has to deal with Nov 1-Dec 31 in year-1.This will be handled by putting the Nov 1-Dec 31 section into the year of Jan-1 to end Apr. For example, Nov 1, 2007 until Apr 30 2008 is Winter 2008. The function assign_seasonYR is built to address this.
+The code also addresses the seasonal correction for Nov 1-Dec 31 in (year - 1) that has to be put into the advanced year ahead. This is handled by putting the Nov 1-Dec 31 section into the year of Jan-1 to end Apr. For example, Nov 1, 2007 until Apr 30 2008 is Winter 2008. The function assign_seasonYR is built to address this.
 
 
 ```{r BMAgg_sp, echo=FALSE, include = FALSE, results = "hide"}
@@ -606,35 +604,35 @@ is.wholenumber <- function(x, tol = .Machine$double.eps^0.5) {
 for(i in 1:length(years)){
    if (!is.wholenumber(as.numeric(years[i]) / 4))
        {
-    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-11-01") & Caribou_BM$date <= paste0(years[i],"-12-31"),11] = "EW"
-    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-01-01") & Caribou_BM$date <= paste0(years[i],"-02-28"),11] = "MW"
-    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-03-01") & Caribou_BM$date <= paste0(years[i],"-04-30"),11] = "LW"
-    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-05-01") & Caribou_BM$date <= paste0(years[i],"-06-30"),11] = "CA"
-    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-07-01") & Caribou_BM$date <= paste0(years[i],"-08-31"),11] = "SU"
-    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-09-01") & Caribou_BM$date <= paste0(years[i],"-10-31"),11] = "RU"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-11-01") & Caribou_BM$date <= paste0(years[i],"-12-31"),4] = "EW"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-01-01") & Caribou_BM$date <= paste0(years[i],"-02-28"),4] = "MW"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-03-01") & Caribou_BM$date <= paste0(years[i],"-04-30"),4] = "LW"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-05-01") & Caribou_BM$date <= paste0(years[i],"-06-30"),4] = "CA"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-07-01") & Caribou_BM$date <= paste0(years[i],"-08-31"),4] = "SU"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-09-01") & Caribou_BM$date <= paste0(years[i],"-10-31"),4] = "RU"
    }
   else if(!is.wholenumber(as.numeric(years[i]) / 100)){
-      Caribou_BM[Caribou_BM$date >= paste0(years[i],"-11-01") & Caribou_BM$date <= paste0(years[i],"-12-31"),11] = "EW"
-    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-01-01") & Caribou_BM$date <= paste0(years[i],"-02-29"),11] = "MW"
-    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-03-01") & Caribou_BM$date <= paste0(years[i],"-04-30"),11] = "LW"
-    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-05-01") & Caribou_BM$date <= paste0(years[i],"-06-30"),11] = "CA"
-    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-07-01") & Caribou_BM$date <= paste0(years[i],"-08-31"),11] = "SU"
-    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-09-01") & Caribou_BM$date <= paste0(years[i],"-10-31"),11] = "RU"
+      Caribou_BM[Caribou_BM$date >= paste0(years[i],"-11-01") & Caribou_BM$date <= paste0(years[i],"-12-31"),4] = "EW"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-01-01") & Caribou_BM$date <= paste0(years[i],"-02-29"),4] = "MW"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-03-01") & Caribou_BM$date <= paste0(years[i],"-04-30"),4] = "LW"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-05-01") & Caribou_BM$date <= paste0(years[i],"-06-30"),4] = "CA"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-07-01") & Caribou_BM$date <= paste0(years[i],"-08-31"),4] = "SU"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-09-01") & Caribou_BM$date <= paste0(years[i],"-10-31"),4] = "RU"
   }
     else if(!is.wholenumber(as.numeric(years[i]) / 400)){
-      Caribou_BM[Caribou_BM$date >= paste0(years[i],"-11-01") & Caribou_BM$date <= paste0(years[i],"-12-31"),11] = "EW"
-    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-01-01") & Caribou_BM$date <= paste0(years[i],"-02-28"),11] = "MW"
-    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-03-01") & Caribou_BM$date <= paste0(years[i],"-04-30"),11] = "LW"
-    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-05-01") & Caribou_BM$date <= paste0(years[i],"-06-30"),11] = "CA"
-    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-07-01") & Caribou_BM$date <= paste0(years[i],"-08-31"),11] = "SU"
-    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-09-01") & Caribou_BM$date <= paste0(years[i],"-10-31"),11] = "RU"
+      Caribou_BM[Caribou_BM$date >= paste0(years[i],"-11-01") & Caribou_BM$date <= paste0(years[i],"-12-31"),4] = "EW"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-01-01") & Caribou_BM$date <= paste0(years[i],"-02-28"),4] = "MW"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-03-01") & Caribou_BM$date <= paste0(years[i],"-04-30"),4] = "LW"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-05-01") & Caribou_BM$date <= paste0(years[i],"-06-30"),4] = "CA"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-07-01") & Caribou_BM$date <= paste0(years[i],"-08-31"),4] = "SU"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-09-01") & Caribou_BM$date <= paste0(years[i],"-10-31"),4] = "RU"
     }else{
-          Caribou_BM[Caribou_BM$date >= paste0(years[i],"-11-01") & Caribou_BM$date <= paste0(years[i],"-12-31"),11] = "EW"
-    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-01-01") & Caribou_BM$date <= paste0(years[i],"-02-29"),11] = "MW"
-    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-03-01") & Caribou_BM$date <= paste0(years[i],"-04-30"),11] = "LW"
-    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-05-01") & Caribou_BM$date <= paste0(years[i],"-06-30"),11] = "CA"
-    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-07-01") & Caribou_BM$date <= paste0(years[i],"-08-31"),11] = "SU"
-    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-09-01") & Caribou_BM$date <= paste0(years[i],"-10-31"),11] = "RU"  
+          Caribou_BM[Caribou_BM$date >= paste0(years[i],"-11-01") & Caribou_BM$date <= paste0(years[i],"-12-31"),4] = "EW"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-01-01") & Caribou_BM$date <= paste0(years[i],"-02-29"),4] = "MW"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-03-01") & Caribou_BM$date <= paste0(years[i],"-04-30"),4] = "LW"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-05-01") & Caribou_BM$date <= paste0(years[i],"-06-30"),4] = "CA"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-07-01") & Caribou_BM$date <= paste0(years[i],"-08-31"),4] = "SU"
+    Caribou_BM[Caribou_BM$date >= paste0(years[i],"-09-01") & Caribou_BM$date <= paste0(years[i],"-10-31"),4] = "RU"  
     }
 }
 
@@ -823,35 +821,35 @@ is.wholenumber <- function(x, tol = .Machine$double.eps^0.5) {
 for(i in 1:length(years)){
    if (!is.wholenumber(as.numeric(years[i]) / 4))
        {
-    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-11-01") & Caribou_BM_Agg$date <= paste0(years[i],"-12-31"),11] = "EW"
-    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-01-01") & Caribou_BM_Agg$date <= paste0(years[i],"-02-28"),11] = "MW"
-    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-03-01") & Caribou_BM_Agg$date <= paste0(years[i],"-04-30"),11] = "LW"
-    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-05-01") & Caribou_BM_Agg$date <= paste0(years[i],"-06-30"),11] = "CA"
-    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-07-01") & Caribou_BM_Agg$date <= paste0(years[i],"-08-31"),11] = "SU"
-    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-09-01") & Caribou_BM_Agg$date <= paste0(years[i],"-10-31"),11] = "RU"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-11-01") & Caribou_BM_Agg$date <= paste0(years[i],"-12-31"),4] = "EW"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-01-01") & Caribou_BM_Agg$date <= paste0(years[i],"-02-28"),4] = "MW"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-03-01") & Caribou_BM_Agg$date <= paste0(years[i],"-04-30"),4] = "LW"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-05-01") & Caribou_BM_Agg$date <= paste0(years[i],"-06-30"),4] = "CA"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-07-01") & Caribou_BM_Agg$date <= paste0(years[i],"-08-31"),4] = "SU"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-09-01") & Caribou_BM_Agg$date <= paste0(years[i],"-10-31"),4] = "RU"
    }
   else if(!is.wholenumber(as.numeric(years[i]) / 100)){
-      Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-11-01") & Caribou_BM_Agg$date <= paste0(years[i],"-12-31"),11] = "EW"
-    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-01-01") & Caribou_BM_Agg$date <= paste0(years[i],"-02-29"),11] = "MW"
-    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-03-01") & Caribou_BM_Agg$date <= paste0(years[i],"-04-30"),11] = "LW"
-    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-05-01") & Caribou_BM_Agg$date <= paste0(years[i],"-06-30"),11] = "CA"
-    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-07-01") & Caribou_BM_Agg$date <= paste0(years[i],"-08-31"),11] = "SU"
-    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-09-01") & Caribou_BM_Agg$date <= paste0(years[i],"-10-31"),11] = "RU"
+      Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-11-01") & Caribou_BM_Agg$date <= paste0(years[i],"-12-31"),4] = "EW"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-01-01") & Caribou_BM_Agg$date <= paste0(years[i],"-02-29"),4] = "MW"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-03-01") & Caribou_BM_Agg$date <= paste0(years[i],"-04-30"),4] = "LW"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-05-01") & Caribou_BM_Agg$date <= paste0(years[i],"-06-30"),4] = "CA"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-07-01") & Caribou_BM_Agg$date <= paste0(years[i],"-08-31"),4] = "SU"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-09-01") & Caribou_BM_Agg$date <= paste0(years[i],"-10-31"),4] = "RU"
   }
     else if(!is.wholenumber(as.numeric(years[i]) / 400)){
-      Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-11-01") & Caribou_BM_Agg$date <= paste0(years[i],"-12-31"),11] = "EW"
-    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-01-01") & Caribou_BM_Agg$date <= paste0(years[i],"-02-28"),11] = "MW"
-    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-03-01") & Caribou_BM_Agg$date <= paste0(years[i],"-04-30"),11] = "LW"
-    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-05-01") & Caribou_BM_Agg$date <= paste0(years[i],"-06-30"),11] = "CA"
-    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-07-01") & Caribou_BM_Agg$date <= paste0(years[i],"-08-31"),11] = "SU"
-    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-09-01") & Caribou_BM_Agg$date <= paste0(years[i],"-10-31"),11] = "RU"
+      Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-11-01") & Caribou_BM_Agg$date <= paste0(years[i],"-12-31"),4] = "EW"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-01-01") & Caribou_BM_Agg$date <= paste0(years[i],"-02-28"),4] = "MW"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-03-01") & Caribou_BM_Agg$date <= paste0(years[i],"-04-30"),4] = "LW"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-05-01") & Caribou_BM_Agg$date <= paste0(years[i],"-06-30"),4] = "CA"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-07-01") & Caribou_BM_Agg$date <= paste0(years[i],"-08-31"),4] = "SU"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-09-01") & Caribou_BM_Agg$date <= paste0(years[i],"-10-31"),4] = "RU"
     }else{
           Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-11-01") & Caribou_BM_Agg$date <= paste0(years[i],"-12-31"),11] = "EW"
-    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-01-01") & Caribou_BM_Agg$date <= paste0(years[i],"-02-29"),11] = "MW"
-    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-03-01") & Caribou_BM_Agg$date <= paste0(years[i],"-04-30"),11] = "LW"
-    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-05-01") & Caribou_BM_Agg$date <= paste0(years[i],"-06-30"),11] = "CA"
-    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-07-01") & Caribou_BM_Agg$date <= paste0(years[i],"-08-31"),11] = "SU"
-    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-09-01") & Caribou_BM_Agg$date <= paste0(years[i],"-10-31"),11] = "RU"  
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-01-01") & Caribou_BM_Agg$date <= paste0(years[i],"-02-29"),4] = "MW"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-03-01") & Caribou_BM_Agg$date <= paste0(years[i],"-04-30"),4] = "LW"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-05-01") & Caribou_BM_Agg$date <= paste0(years[i],"-06-30"),4] = "CA"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-07-01") & Caribou_BM_Agg$date <= paste0(years[i],"-08-31"),4] = "SU"
+    Caribou_BM_Agg[Caribou_BM_Agg$date >= paste0(years[i],"-09-01") & Caribou_BM_Agg$date <= paste0(years[i],"-10-31"),4] = "RU"  
     }
 }
 
@@ -877,7 +875,7 @@ names(Caribou_BM_AgglistSeas) <- as.character(Caribou_BM_Agg_Seas)
 
 ## Four seasons
 
-Caribou_BM_Agg[which(Caribou_BM_Agg$season == "EW" | Caribou_BM_Agg$season == "MW" | Caribou_BM_Agg$season == "LW"),11] <- "WI"
+Caribou_BM_Agg[which(Caribou_BM_Agg$season == "EW" | Caribou_BM_Agg$season == "MW" | Caribou_BM_Agg$season == "LW"),4] <- "WI"
 
 for(i in 1:length(Caribou_BM_Agg_Seas4)){
   Caribou_BM_AgglistSeas4[[i]] <- data.frame(subset(Caribou_BM_Agg, season == Caribou_BM_Agg_Seas4[i]))
@@ -886,8 +884,9 @@ names(Caribou_BM_AgglistSeas4) <- as.character(Caribou_BM_Agg_Seas4)
 
 ```
 
-BM
-Create	a	list	of	SpatialPointsDataFrames: By Season x Year
+# BM
+
+Create a	list	of	SpatialPointsDataFrames: By Season x Year
 
 
 ```{r BMAgg_sp, echo=FALSE, include = FALSE, results = "hide"}
@@ -1066,7 +1065,8 @@ Caribou_BM_YrRU_SPDF <- newlistBM_Agg
 ```
 
 
-BM - The Four Season Model with winter as one.
+#BM - The Four Season Model: Winter as season.
+
 Create	a	list	of	SpatialPointsDataFrames: By Season x Year
 
 
@@ -1189,35 +1189,35 @@ is.wholenumber <- function(x, tol = .Machine$double.eps^0.5) {
 for(i in 1:length(years)){
    if (!is.wholenumber(as.numeric(years[i]) / 4))
        {
-    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-11-01") & Caribou_TR$date <= paste0(years[i],"-12-31"),11] = "EW"
-    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-01-01") & Caribou_TR$date <= paste0(years[i],"-02-28"),11] = "MW"
-    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-03-01") & Caribou_TR$date <= paste0(years[i],"-04-30"),11] = "LW"
-    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-05-01") & Caribou_TR$date <= paste0(years[i],"-06-30"),11] = "CA"
-    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-07-01") & Caribou_TR$date <= paste0(years[i],"-08-31"),11] = "SU"
-    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-09-01") & Caribou_TR$date <= paste0(years[i],"-10-31"),11] = "RU"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-11-01") & Caribou_TR$date <= paste0(years[i],"-12-31"),4] = "EW"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-01-01") & Caribou_TR$date <= paste0(years[i],"-02-28"),4] = "MW"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-03-01") & Caribou_TR$date <= paste0(years[i],"-04-30"),4] = "LW"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-05-01") & Caribou_TR$date <= paste0(years[i],"-06-30"),4] = "CA"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-07-01") & Caribou_TR$date <= paste0(years[i],"-08-31"),4] = "SU"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-09-01") & Caribou_TR$date <= paste0(years[i],"-10-31"),4] = "RU"
    }
   else if(!is.wholenumber(as.numeric(years[i]) / 100)){
-      Caribou_TR[Caribou_TR$date >= paste0(years[i],"-11-01") & Caribou_TR$date <= paste0(years[i],"-12-31"),11] = "EW"
-    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-01-01") & Caribou_TR$date <= paste0(years[i],"-02-29"),11] = "MW"
-    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-03-01") & Caribou_TR$date <= paste0(years[i],"-04-30"),11] = "LW"
-    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-05-01") & Caribou_TR$date <= paste0(years[i],"-06-30"),11] = "CA"
-    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-07-01") & Caribou_TR$date <= paste0(years[i],"-08-31"),11] = "SU"
-    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-09-01") & Caribou_TR$date <= paste0(years[i],"-10-31"),11] = "RU"
+      Caribou_TR[Caribou_TR$date >= paste0(years[i],"-11-01") & Caribou_TR$date <= paste0(years[i],"-12-31"),4] = "EW"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-01-01") & Caribou_TR$date <= paste0(years[i],"-02-29"),4] = "MW"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-03-01") & Caribou_TR$date <= paste0(years[i],"-04-30"),4] = "LW"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-05-01") & Caribou_TR$date <= paste0(years[i],"-06-30"),4] = "CA"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-07-01") & Caribou_TR$date <= paste0(years[i],"-08-31"),4] = "SU"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-09-01") & Caribou_TR$date <= paste0(years[i],"-10-31"),4] = "RU"
   }
     else if(!is.wholenumber(as.numeric(years[i]) / 400)){
-      Caribou_TR[Caribou_TR$date >= paste0(years[i],"-11-01") & Caribou_TR$date <= paste0(years[i],"-12-31"),11] = "EW"
-    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-01-01") & Caribou_TR$date <= paste0(years[i],"-02-28"),11] = "MW"
-    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-03-01") & Caribou_TR$date <= paste0(years[i],"-04-30"),11] = "LW"
-    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-05-01") & Caribou_TR$date <= paste0(years[i],"-06-30"),11] = "CA"
-    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-07-01") & Caribou_TR$date <= paste0(years[i],"-08-31"),11] = "SU"
-    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-09-01") & Caribou_TR$date <= paste0(years[i],"-10-31"),11] = "RU"
+      Caribou_TR[Caribou_TR$date >= paste0(years[i],"-11-01") & Caribou_TR$date <= paste0(years[i],"-12-31"),4] = "EW"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-01-01") & Caribou_TR$date <= paste0(years[i],"-02-28"),4] = "MW"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-03-01") & Caribou_TR$date <= paste0(years[i],"-04-30"),4] = "LW"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-05-01") & Caribou_TR$date <= paste0(years[i],"-06-30"),4] = "CA"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-07-01") & Caribou_TR$date <= paste0(years[i],"-08-31"),4] = "SU"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-09-01") & Caribou_TR$date <= paste0(years[i],"-10-31"),4] = "RU"
     }else{
-          Caribou_TR[Caribou_TR$date >= paste0(years[i],"-11-01") & Caribou_TR$date <= paste0(years[i],"-12-31"),11] = "EW"
-    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-01-01") & Caribou_TR$date <= paste0(years[i],"-02-29"),11] = "MW"
-    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-03-01") & Caribou_TR$date <= paste0(years[i],"-04-30"),11] = "LW"
-    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-05-01") & Caribou_TR$date <= paste0(years[i],"-06-30"),11] = "CA"
-    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-07-01") & Caribou_TR$date <= paste0(years[i],"-08-31"),11] = "SU"
-    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-09-01") & Caribou_TR$date <= paste0(years[i],"-10-31"),11] = "RU"  
+          Caribou_TR[Caribou_TR$date >= paste0(years[i],"-11-01") & Caribou_TR$date <= paste0(years[i],"-12-31"),4] = "EW"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-01-01") & Caribou_TR$date <= paste0(years[i],"-02-29"),4] = "MW"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-03-01") & Caribou_TR$date <= paste0(years[i],"-04-30"),4] = "LW"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-05-01") & Caribou_TR$date <= paste0(years[i],"-06-30"),4] = "CA"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-07-01") & Caribou_TR$date <= paste0(years[i],"-08-31"),4] = "SU"
+    Caribou_TR[Caribou_TR$date >= paste0(years[i],"-09-01") & Caribou_TR$date <= paste0(years[i],"-10-31"),4] = "RU"  
     }
 }
 
@@ -1406,35 +1406,35 @@ is.wholenumber <- function(x, tol = .Machine$double.eps^0.5) {
 for(i in 1:length(years)){
    if (!is.wholenumber(as.numeric(years[i]) / 4))
        {
-    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-11-01") & Caribou_TR_Agg$date <= paste0(years[i],"-12-31"),11] = "EW"
-    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-01-01") & Caribou_TR_Agg$date <= paste0(years[i],"-02-28"),11] = "MW"
-    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-03-01") & Caribou_TR_Agg$date <= paste0(years[i],"-04-30"),11] = "LW"
-    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-05-01") & Caribou_TR_Agg$date <= paste0(years[i],"-06-30"),11] = "CA"
-    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-07-01") & Caribou_TR_Agg$date <= paste0(years[i],"-08-31"),11] = "SU"
-    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-09-01") & Caribou_TR_Agg$date <= paste0(years[i],"-10-31"),11] = "RU"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-11-01") & Caribou_TR_Agg$date <= paste0(years[i],"-12-31"),4] = "EW"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-01-01") & Caribou_TR_Agg$date <= paste0(years[i],"-02-28"),4] = "MW"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-03-01") & Caribou_TR_Agg$date <= paste0(years[i],"-04-30"),4] = "LW"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-05-01") & Caribou_TR_Agg$date <= paste0(years[i],"-06-30"),4] = "CA"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-07-01") & Caribou_TR_Agg$date <= paste0(years[i],"-08-31"),4] = "SU"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-09-01") & Caribou_TR_Agg$date <= paste0(years[i],"-10-31"),4] = "RU"
    }
   else if(!is.wholenumber(as.numeric(years[i]) / 100)){
-      Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-11-01") & Caribou_TR_Agg$date <= paste0(years[i],"-12-31"),11] = "EW"
-    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-01-01") & Caribou_TR_Agg$date <= paste0(years[i],"-02-29"),11] = "MW"
-    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-03-01") & Caribou_TR_Agg$date <= paste0(years[i],"-04-30"),11] = "LW"
-    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-05-01") & Caribou_TR_Agg$date <= paste0(years[i],"-06-30"),11] = "CA"
-    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-07-01") & Caribou_TR_Agg$date <= paste0(years[i],"-08-31"),11] = "SU"
-    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-09-01") & Caribou_TR_Agg$date <= paste0(years[i],"-10-31"),11] = "RU"
+      Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-11-01") & Caribou_TR_Agg$date <= paste0(years[i],"-12-31"),4] = "EW"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-01-01") & Caribou_TR_Agg$date <= paste0(years[i],"-02-29"),4] = "MW"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-03-01") & Caribou_TR_Agg$date <= paste0(years[i],"-04-30"),4] = "LW"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-05-01") & Caribou_TR_Agg$date <= paste0(years[i],"-06-30"),4] = "CA"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-07-01") & Caribou_TR_Agg$date <= paste0(years[i],"-08-31"),4] = "SU"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-09-01") & Caribou_TR_Agg$date <= paste0(years[i],"-10-31"),4] = "RU"
   }
     else if(!is.wholenumber(as.numeric(years[i]) / 400)){
-      Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-11-01") & Caribou_TR_Agg$date <= paste0(years[i],"-12-31"),11] = "EW"
-    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-01-01") & Caribou_TR_Agg$date <= paste0(years[i],"-02-28"),11] = "MW"
-    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-03-01") & Caribou_TR_Agg$date <= paste0(years[i],"-04-30"),11] = "LW"
-    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-05-01") & Caribou_TR_Agg$date <= paste0(years[i],"-06-30"),11] = "CA"
-    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-07-01") & Caribou_TR_Agg$date <= paste0(years[i],"-08-31"),11] = "SU"
-    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-09-01") & Caribou_TR_Agg$date <= paste0(years[i],"-10-31"),11] = "RU"
+      Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-11-01") & Caribou_TR_Agg$date <= paste0(years[i],"-12-31"),4] = "EW"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-01-01") & Caribou_TR_Agg$date <= paste0(years[i],"-02-28"),4] = "MW"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-03-01") & Caribou_TR_Agg$date <= paste0(years[i],"-04-30"),4] = "LW"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-05-01") & Caribou_TR_Agg$date <= paste0(years[i],"-06-30"),4] = "CA"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-07-01") & Caribou_TR_Agg$date <= paste0(years[i],"-08-31"),4] = "SU"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-09-01") & Caribou_TR_Agg$date <= paste0(years[i],"-10-31"),4] = "RU"
     }else{
-          Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-11-01") & Caribou_TR_Agg$date <= paste0(years[i],"-12-31"),11] = "EW"
-    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-01-01") & Caribou_TR_Agg$date <= paste0(years[i],"-02-29"),11] = "MW"
-    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-03-01") & Caribou_TR_Agg$date <= paste0(years[i],"-04-30"),11] = "LW"
-    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-05-01") & Caribou_TR_Agg$date <= paste0(years[i],"-06-30"),11] = "CA"
-    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-07-01") & Caribou_TR_Agg$date <= paste0(years[i],"-08-31"),11] = "SU"
-    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-09-01") & Caribou_TR_Agg$date <= paste0(years[i],"-10-31"),11] = "RU"  
+          Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-11-01") & Caribou_TR_Agg$date <= paste0(years[i],"-12-31"),4] = "EW"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-01-01") & Caribou_TR_Agg$date <= paste0(years[i],"-02-29"),4] = "MW"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-03-01") & Caribou_TR_Agg$date <= paste0(years[i],"-04-30"),4] = "LW"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-05-01") & Caribou_TR_Agg$date <= paste0(years[i],"-06-30"),4] = "CA"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-07-01") & Caribou_TR_Agg$date <= paste0(years[i],"-08-31"),4] = "SU"
+    Caribou_TR_Agg[Caribou_TR_Agg$date >= paste0(years[i],"-09-01") & Caribou_TR_Agg$date <= paste0(years[i],"-10-31"),4] = "RU"  
     }
 }
 
@@ -1460,7 +1460,7 @@ names(Caribou_TR_AgglistSeas) <- as.character(Caribou_TR_Agg_Seas)
 
 ## Four seasons
 
-Caribou_TR_Agg[which(Caribou_TR_Agg$season == "EW" | Caribou_TR_Agg$season == "MW" | Caribou_TR_Agg$season == "LW"),11] <- "WI"
+Caribou_TR_Agg[which(Caribou_TR_Agg$season == "EW" | Caribou_TR_Agg$season == "MW" | Caribou_TR_Agg$season == "LW"),4] <- "WI"
 
 for(i in 1:length(Caribou_TR_Agg_Seas4)){
   Caribou_TR_AgglistSeas4[[i]] <- data.frame(subset(Caribou_TR_Agg, season == Caribou_TR_Agg_Seas4[i]))
@@ -1469,7 +1469,7 @@ names(Caribou_TR_AgglistSeas4) <- as.character(Caribou_TR_Agg_Seas4)
 
 ```
 
-TR
+#TR
 Create	a	list	of	SpatialPointsDataFrames: By Season x Year
 
 
@@ -1649,7 +1649,7 @@ Caribou_TR_YrRU_SPDF <- newlistTR_Agg
 ```
 
 
-TR - The Four Season Model with winter as one.
+#TR - The Four Season Model with winter as one.
 Create	a	list	of	SpatialPointsDataFrames: By Season x Year
 
 
@@ -1952,7 +1952,7 @@ p + geom_line(data = Caribou_BM_DF, aes(x = Date, y = Animals_n * 100),linetype 
 
 ```
 
-Plotting the six season model
+# Plotting Review: Six season model
 
 ```{r }
 # EW = Early winter, MW = Mid winter, LW = Late winter, CA = Calving, SU = Summer, RU = Rutting
@@ -1965,8 +1965,11 @@ b = 1
 
 for(s in 1:length(seasonal)){
   for	(i	in	1:length(seasonal[[s]])){
-      seasonal_tpointsli[b] <- nrow(seasonal[[s]][[i]]@data)
+    if(length(seasonal[[s]][[i]]) != 0){  
+    seasonal_tpointsli[b] <- nrow(seasonal[[s]][[i]]@data)
       b = b + 1
+    }
+    else{next()}
   }
 }
 
@@ -1992,7 +1995,7 @@ b = 1
 
 for(s in 1:length(seasonal)){
   for	(i	in	1:length(seasonal[[s]])){
-        if(nrow(seasonal[[s]][[i]]@data) > 5){
+        if(length(seasonal[[s]][[i]]) != 0 && nrow(seasonal[[s]][[i]]@data) > 5){
           seasonal_t5pointsli[b] <- nrow(seasonal[[s]][[i]]@data)
           b = b + 1}
         else{next()}
@@ -2016,7 +2019,7 @@ boxplot(x, main="Number of telemetry points per season")
 ```
 
 
-Plotting the four season model
+Plotting Review: Four season model
 
 ```{r }
 # EW = Early winter, MW = Mid winter, LW = Late winter, CA = Calving, SU = Summer, RU = Rutting
@@ -2084,6 +2087,8 @@ boxplot(x, main="Number of telemetry points per season")
 
 
 ```
+
+# Seasonal Ranges: Core 50% adehabitatHR
 
 Running the 50% - Seasons
 
@@ -2154,7 +2159,8 @@ plot(x = TabUD_area_BM_RU$nb.reloc, y = TabUD_area_BM_RU$area, xlab="Sample Size
 
 
 ```
-h2{Adehabitat Kernel Utilization Density Models}
+
+# Adehabitat Kernel Utilization Density Models
 
 Alternate - LSCV, does not converge for some but reserved here for future inspect if needed.
 #######################################################################
