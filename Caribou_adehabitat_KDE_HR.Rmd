@@ -20,7 +20,7 @@ h2{ Glencore: Quintette Caribou, Bullmoose and Trend Roman : R Markdown code}
 ## Annotated RMarkdown
 
 
-```{r include = FALSE, results = "hide"}
+```{r include = FALSE, results = "hide", eval=FALSE}
 
 ##################################################################
 
@@ -30,7 +30,6 @@ if(!require(rgdal)){install.packages("rgdal")}
 if(!require(maptools)){install.packages("maptools")}
 if(!require(adehabitatHR)){install.packages("adehabitatHR")}
 if(!require(raster)){install.packages("raster")}
-#if(!require(BBMM)){install.packages("BBMM")} #Removed from Cran
 if(!require(lunar)){install.packages("lunar")}
 if(!require(oce)){install.packages("oce")}
 if(!require(summarytools)){install.packages("summarytools")}
@@ -49,7 +48,22 @@ if(!require(gridExtra)){install.packages("gridExtra")}
 if(!require(RColorBrewer)){install.packages("RColorBrewer")}
 if(!require(furniture)){install.packages("furniture")}
 if(!require(gtable)){install.packages("gtable")}
+if(!require(foreach)){install.packages("foreach")}
+if(!require(doParallel)){install.packages("doParallel")}
+if(!require(doSNOW)){install.packages("doSNOW")}
 
+```
+
+Package and library installs were broken down for use in the Acenet high-performance computing environment. Change eval condition as needed.
+
+```{r Acenet_package, eval=FALSE}
+# For Acenet:
+install.packages(c("sp", "terra","rgdal","lubridate","maptools","adehabitatHR","raster","lunar","oce","summarytools","move","#ggplot2","sf","rgeos","stringr","dismo","ggmap","mapproj","maptools","here","rcompanion","gr#idExtra","RColorBrewer","furniture","gtable","foreach","doParallel"))
+
+```
+
+
+```{r Libraries}
 # Libraries -------------------------------------------------------------------------
 library(raster)
 library(ggplot2)
@@ -64,7 +78,6 @@ library(dismo)
 library(maptools)
 library(lubridate)
 library(rgdal)
-#library(BBMM)
 library(lunar)
 library(oce)
 library(summarytools)
@@ -74,7 +87,9 @@ library(gridExtra)
 library(RColorBrewer)
 library(furniture)
 library(gtable)
-
+library(foreach)
+library(doParallel)
+library(doSNOW)
 
 #	Load	required	packages
 require(sp)
@@ -82,7 +97,6 @@ require(lubridate)
 require(rgdal)
 require(sf)
 require(stringr)
-require(move)
 
 ###################################################################
 
@@ -2019,7 +2033,7 @@ boxplot(x, main="Number of telemetry points per season")
 ```
 
 
-Plotting Review: Four season model
+# Plotting Review: Four season model
 
 ```{r }
 # EW = Early winter, MW = Mid winter, LW = Late winter, CA = Calving, SU = Summer, RU = Rutting
@@ -2101,6 +2115,8 @@ require(maptools)
 require(adehabitatHR)
 require(rgdal)
 
+
+
 #######################################################################
 per	=50 #	percent	utilization	distribution	estimated
 h="href" #	bandwidth	setting	("href",	"LSCV",	or	user	specified	number)	
@@ -2132,6 +2148,128 @@ for(s in 1:length(seasonal)){
     }else{next}
   }
 }
+
+## Parallel processing approach
+
+#create the cluster
+n.cores <- parallel::detectCores() - 1
+my.cluster <- parallel::makeCluster(
+  n.cores, 
+  type = "PSOCK"
+  )
+
+#register it to be used by %dopar%
+doParallel::registerDoParallel(cl = my.cluster)
+
+## Learning
+#season function
+#seasonFun <- function(x){
+#  y <- (vector("list", length(x)))
+#  return(y)
+#}
+
+# Winterpar <- c(seasonal[[1]],seasonal[[5]])
+# Calvingpar <- c(seasonal[[2]],seasonal[[6]])
+# Summerpar <- c(seasonal[[3]],seasonal[[7]])
+# Ruttingpar <- c(seasonal[[4]],seasonal[[8]])
+
+# seasonFun(Winterpar)
+
+# Create a new list to store the processed data frames
+season_list <- vector("list", length(seasonal))
+
+#Separate out the seasons foreach parallel
+Winterpar <- c(seasonal[[1]],seasonal[[5]])
+Winterpar_list <- vector("list", length(Winterpar))
+
+Calvingpar <- c(seasonal[[2]],seasonal[[6]])
+Calvingpar_list <- vector("list", length(Calvingpar))
+
+Summerpar <- c(seasonal[[3]],seasonal[[7]])
+Summerpar_list <- vector("list", length(Summerpar))
+
+Ruttingpar <- c(seasonal[[4]],seasonal[[8]])
+Ruttingpar_list <- vector("list", length(Ruttingpar))
+
+# Perform the operations in parallel
+Winterpar_list <- foreach(i = 1:length(Winterpar),
+                          .combine = c,
+                          .packages = "adehabitatHR") %:%
+                          when(nrow(Winterpar[[i]]@data) > 5) %dopar% {
+                    
+                          kernelUD(Winterpar[[i]][,1],
+                              h=h,
+                              kern="bivnorm",
+                              grid=grid,
+                              extent=extent)
+                   }
+
+# Stop the parallel backend
+stopCluster(my.cluster)
+
+# Calculate the vertices
+
+# create the next cluster
+my.cluster <- parallel::makeCluster(
+  n.cores, 
+  type = "SOCK"
+  )
+
+# register it to be used by %dopar%
+doSNOW::registerDoSNOW(cl = my.cluster)
+
+# Bring all seasons together here:
+#UD_list <- c(Winterpar_list,Calvingpar_list,Summerpar_list,Ruttingpar_list)
+
+ver <- list()
+
+ver <- foreach(i = 2:length(Winterpar_list),
+               .combine = 'c',
+               .packages = "adehabitatHR")  %dopar% {
+                    getverticeshr(Winterpar_list[[i]],
+                                  percent = per)
+                }
+
+# Stop the parallel backend
+stopCluster(my.cluster)
+
+# Calculate the areas and write the shapefiles:
+UD_area <- data.frame()
+
+for(i in 1:length(ver)){
+  if(i == 1){
+  UD_area[i] <- ver[[i]][[2]]
+  }
+  else{UD_area[i] <- ver[[i]][[2]]
+  }
+}
+names(UD_area) <- "area"
+
+UD_area[[tally]] = ver$area
+
+
+TabUD_area[nrow(UD_area),c(1:5)] <- rbind(data.frame(SA =substr(names(seasonal[[s]][i]),1,2), season = substr(names(seasonal[[s]][i]),13,14), year = substr(names(seasonal[[s]][i]),8,11), area = UD_area[[tally]], nb.reloc = length(seasonal[[s]][[i]])))
+
+
+    #row = nrow(seasonal[[s]][[i]])
+    #plot(seasonal[[s]][[i]]@coords,	main= names(name)
+    #plot(ver,	add=TRUE)
+    writeOGR(ver,file.path(here("adeHRoutput_noclip","Seasons")),paste0(name,"_",per,"_",h,"4S"), driver="ESRI Shapefile", overwrite_layer=TRUE)
+    
+    
+
+UD_area <- 
+
+
+tally = 1
+
+TabUD_area <- data.frame(matrix(ncol=5))
+colnames(TabUD_area) <- c("SA", "season", "year", "area", "nb.reloc")
+
+
+
+
+###
 
 write.csv(TabUD_area, paste0(here("adeHRoutput_noclip","Seasons"), "/Agg_UD_areasWI.csv", sep=""), row.names = FALSE)
 TabUD_area <- read.csv(file = paste0(here("adeHRoutput_noclip","Seasons"), "/Agg_UD_areas.csv"))
@@ -2176,7 +2314,7 @@ https://cran.r-project.org/web/packages/sp/vignettes/CRS_warnings.html'
 The CRS warnings are part of the CRS transition that is taking place in 2023 - it does not impact the results.
 See: https://gis.stackexchange.com/questions/364667/r-4-0-1-not-sure-i-understand-this-message-warning-message-in-proj4stringx 
 
-```{r Running the 95%}
+```{r Running the 95%, eval=FALSE}
 #######################################################################
 per	= 95 #	percent	utilization	distribution	estimated
 h="href" #	bandwidth	setting	("href",	"LSCV",	or	user	specified	number)	
@@ -2228,7 +2366,7 @@ for	(i	in	1:length(Caribou_TR_Yrs)){
 Running the 95% - Aggregated Animals
 
 
-```{r HREF95_Agg}
+```{r HREF95_Agg, eval=FALSE}
 #######################################################################
 per	= 95 #	percent	utilization	distribution	estimated
 h="href" #	bandwidth	setting	("href",	"LSCV",	or	user	specified	number)	
@@ -2282,7 +2420,7 @@ Running the 50% - Individual Animals
 ## Note that this stops in year 2012 for BM - one of the animals is not relocated enough...need to address this.
 
 
-```{r HREF50 Animals, echo=FALSE}
+```{r HREF50 Animals, echo=FALSE, eval=FALSE}
 #	Load	required	packages
 require(sp)
 require(maptools)
@@ -2335,7 +2473,7 @@ for	(i	in	1:length(Caribou_TR_Yrs)){
 Running the 50% - Aggregated Animals
 
 
-```{r HREF50 Aggregates, echo=FALSE}
+```{r HREF50 Aggregates, echo=FALSE, eval=FALSE}
 
 #	Load	required	packages
 require(sp)
@@ -2393,7 +2531,7 @@ for	(i	in	1:length(Caribou_TR_Agg_Yrs)){
 
 Running the 75% - Individual Animals
 
-```{r}
+```{r, eval=FALSE}
 #	Load	required	packages
 require(sp)
 require(maptools)
@@ -2444,7 +2582,7 @@ for	(i	in	1:length(Caribou_TR_Yrs)){
 
 Running the 75% - Aggregated Animals
 
-```{r}
+```{r, eval=FALSE}
 
 #######################################################################
 per	=75 #	percent	utilization	distribution	estimated
