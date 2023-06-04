@@ -55,17 +55,22 @@ library(patchwork)
 ```{r , echo=FALSE, include = FALSE, message = FALSE, warning = FALSE, results = 'hide', fig.show = 'hide'}
 
 seasonsUD <- list()
-season_UDdir <- gsub(".shp", "",dir(here("adeHRoutput_noclip","Seasons"),pattern=".shp$"))
+season_UDdir <- gsub(".shp",
+                    "",
+                    dir(here("adeHRoutput_noclip","Seasons")
+                    ,pattern=".shp$"))
 
-
-for(i in 1:length(season_UDdir)){
-  name = season_UDdir[i]
-  seasonsUD[i] <- rgdal::readOGR(paste0(here("adeHRoutput_noclip","Seasons"),"/"), name)
-  names(seasonsUD[i]) <- name
-}
-
+season_UDdirF <- dir(here("adeHRoutput_noclip","Seasons"),
+                 pattern=".shp$",
+                 full.names = TRUE)
+                    
+seasonsUD <- lapply(season_UDdirF,
+                  FUN = function(files) {
+                    vect(files)
+                  })
+                  
 names(seasonsUD) <- season_UDdir
-
+                                    
 ## organize each "SpatialPolygonsDataFrame" into a different season
 # WI =, CA = Calving, SU = Summer, RU = Rutting
 
@@ -81,11 +86,15 @@ TRRU <- seasonsUD[grepl("TR", names(seasonsUD)) & grepl("RU", names(seasonsUD))]
 
 ```
 
+# Movements visualized
+
 Employ the "stampr" package to plot and track the movement of the seasonal UD polygons. It works only in pairs of time1 to time2, so this organizes pairs into a time by movement sequence.
+
+see: https://cran.r-project.org/web/packages/stampr/stampr.pdf
+     https://www.jstatsoft.org/article/download/v084c01/1214 
 
 ```{r , echo=FALSE}
 
-## How many years were gathered in a study area per season? Some years there may have been too few GPS data points ( <5 ) for a UD to be created.
 ## organize each "SpatialPolygonsDataFrame" into a different season
 # WI = Winter, CA = Calving, SU = Summer, RU = Rutting
 
@@ -99,12 +108,18 @@ TRCA <- seasonsUD[grepl("TR", names(seasonsUD)) & grepl("CA", names(seasonsUD))]
 TRSU <- seasonsUD[grepl("TR", names(seasonsUD)) & grepl("SU", names(seasonsUD))]
 TRRU <- seasonsUD[grepl("TR", names(seasonsUD)) & grepl("RU", names(seasonsUD))]
 
-
-## These are SpatialDataFramePolygons in a list, so I am using list() instead of lapply() for now.
 years <- c("2003", "2004", "2005", "2006", "2007", "2008", "2009", "2010", "2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019", "2020", "2021")
 
 BM_sUDs <- list(BMWI, BMCA, BMSU, BMRU)
 BM_sUDsn <- c("BMWI", "BMCA", "BMSU", "BMRU")
+TR_sUDs <- list(TRWI, TRCA, TRSU, TRRU)
+TR_sUDsn <- c("TRWI", "TRCA", "TRSU", "TRRU")
+
+## Stampr package. This works for some of the UD polygon comparisons.
+## These loops were working, but it requires troubleshooting.
+## However, you can look at individual cases (e.g., n = 2 in BM works).
+## Retained for future exploratory study of UD movements.
+
 BM_chSum <- list()
 BM_chname <- list()
 lc = 1
@@ -116,11 +131,10 @@ for(n in 1:length(BM_sUDs)){
       x2 <- BM_sUDs[[n]][[y+1]]
       x1$ID <-1
       x2$ID <-2
-      x1 <- st_as_sf(x1, crs = 4269)
-      x2 <- st_as_sf(x2, crs = 4269)
+      x1 <- sf::st_as_sf(x1)
+      x2 <- sf::st_as_sf(x2)
       x1 <- x1[,c(1,4,3)]
       x2 <- x2[,c(1,4,3)]
-
       BM_chSum[[lc]] <- assign(paste0(BM_sUDsn[n],"_",substr(names(BM_sUDs[[n]][y]), 8, 11)),stampr::stamp(x1, x2, direction = FALSE, distance = FALSE, shape=FALSE))
       BM_chname[lc] <- paste0(BM_sUDsn[n],"_",substr(names(BM_sUDs[[n]][y]), 8, 11))
       lc = lc+1}else{next()}
@@ -130,8 +144,6 @@ for(n in 1:length(BM_sUDs)){
 BM_chSum_df <- unlist(BM_chSum)
 names(BM_chSum_df) <- unlist(BM_chname)
 
-TR_sUDs <- list(TRWI, TRCA, TRSU, TRRU)
-TR_sUDsn <- c("TRWI", "TRCA", "TRSU", "TRRU")
 TR_chSum <- list()
 TR_chname <- list()
 lc = 1
@@ -173,7 +185,7 @@ BM_sUDsn <- c("BMWI", "BMCA", "BMSU", "BMRU")
 TR_sUDsn <- c("TRWI", "TRCA", "TRSU", "TRRU")
 
 QU_All.shp <- vect(paste0(here("Spatial Data"),"/Quintette_Caribou_ProjectArea.shp"))
-QU_All.shp <- project(QU_All.shp, crs(BMWI[[1]]))
+QU_All.shp <- terra::project(QU_All.shp, crs(BMWI[[1]]))
 QU_All_SA.shp <- sf::st_as_sf(QU_All.shp)
 QU_All_SA.shp[1,1] <- "HEWTR" ## Differentiate TR from BM
 
@@ -258,9 +270,8 @@ bbox_newTRc <- bbox_newTRc %>% st_as_sfc() # take the bounding box ..
 sUDsn <- c("WI", "CA", "RU", "SU")
 
 for(i in 1:length(TR_sUDsn)){
-  assign(paste0("WRbase_",sUDsn[i]),tm_shape(QU_All_SA.shp, bbox = bbox_new) + tm_fill("CH_TYPE_FI", palette=c("wheat3","lightblue1")) + tm_borders() + tm_layout(frame = FALSE, main.title = paste0("Centroids of 50% UDs Tracked by Season: ", sUDsn[i]), legend.show = FALSE)  + tm_scale_bar(position = c("right","top")))
+  assign(paste0("WRbase_",sUDsn[i]),tm_shape(QU_All_SA.shp, bbox = bbox_new) + tm_fill("CH_TYPE_FI", palette=c("wheat2","lightblue1")) + tm_borders() + tm_layout(frame = FALSE, main.title = paste0("Centroids of 50% UDs Tracked by Season: ", sUDsn[i]), legend.show = FALSE)  + tm_scale_bar(position = c("right","top")))
 }
-
 
 ## Bullmoose
 ## Seasonal UD 50% polygons plotted over season by year.
@@ -268,10 +279,10 @@ for(i in 1:length(BM_sUDsn)){
     for(y in 1:length(BM_sUDs[[i]])){
       vir_10 <- viridis(n = length(BM_sUDs[[i]]))
       if(y < 9){
-      assign(paste0(BM_sUDsn[i],"a",y),(assign(paste0("tmbase_",BM_sUDsn[i],y),tm_shape(QU_BM_SA.shp, bbox = bbox_newBM) + tm_borders() + tm_layout(frame = TRUE, main.title = paste0(BM_sUDsn[[i]], " Year: 200",y+1), main.title.size =0.8)) + assign(paste0(BM_sUDsn[i],y),tm_shape(BM_sUDs[[i]][[y]]) + tm_layout(frame = TRUE) + tm_polygons(col=vir_10[y], alpha = 0.2))))
+      assign(paste0(BM_sUDsn[i],"a",y),(assign(paste0("tmbase_",BM_sUDsn[i],y),tm_shape(QU_BM_SA.shp, bbox = bbox_newBM) + tm_borders() + tm_layout(frame = TRUE, main.title = paste0(BM_sUDsn[[i]], " Year: 200",y+1), main.title.size =0.8)) + assign(paste0(BM_sUDsn[i],y),tm_shape(st_as_sf(BM_sUDs[[i]][[y]])) + tm_layout(frame = TRUE) + tm_polygons(col=vir_10[y], alpha = 0.2))))
       }
       else{
-      assign(paste0(BM_sUDsn[i],"a",y),(assign(paste0("tmbase_",BM_sUDsn[i],y),tm_shape(QU_BM_SA.shp, bbox = bbox_newBM) + tm_borders() + tm_layout(frame = TRUE, main.title = paste0(BM_sUDsn[[i]], " Year: 20",y+1), main.title.size =0.8)) + assign(paste0(BM_sUDsn[i],y),tm_shape(BM_sUDs[[i]][[y]]) + tm_layout(frame = TRUE) + tm_polygons(col=vir_10[y], alpha = 0.2))))
+      assign(paste0(BM_sUDsn[i],"a",y),(assign(paste0("tmbase_",BM_sUDsn[i],y),tm_shape(QU_BM_SA.shp, bbox = bbox_newBM) + tm_borders() + tm_layout(frame = TRUE, main.title = paste0(BM_sUDsn[[i]], " Year: 20",y+1), main.title.size =0.8)) + assign(paste0(BM_sUDsn[i],y),tm_shape(st_as_sf(BM_sUDs[[i]][[y]])) + tm_layout(frame = TRUE) + tm_polygons(col=vir_10[y], alpha = 0.2))))
       }
     }
 }
@@ -287,10 +298,10 @@ for(i in 1:length(TR_sUDsn)){
     for(y in 1:length(TR_sUDs[[i]])){
       vir_10 <- viridis(n = length(TR_sUDs[[i]]))
       if(y < 9){
-      assign(paste0(TR_sUDsn[i],"a",y),(assign(paste0("tmbase_",TR_sUDsn[i],y),tm_shape(QU_TR_SA.shp, bbox = bbox_newTR) + tm_borders() + tm_layout(frame = TRUE, main.title = paste0(TR_sUDsn[[i]], " Year: 200",y+1), main.title.size =0.8)) + assign(paste0(TR_sUDsn[i],y),tm_shape(TR_sUDs[[i]][[y]]) + tm_layout(frame = TRUE) + tm_polygons(col=vir_10[y], alpha = 0.2))))
+      assign(paste0(TR_sUDsn[i],"a",y),(assign(paste0("tmbase_",TR_sUDsn[i],y),tm_shape(QU_TR_SA.shp, bbox = bbox_newTR) + tm_borders() + tm_layout(frame = TRUE, main.title = paste0(TR_sUDsn[[i]], " Year: 200",y+1), main.title.size =0.8)) + assign(paste0(TR_sUDsn[i],y),tm_shape(st_as_sf(TR_sUDs[[i]][[y]])) + tm_layout(frame = TRUE) + tm_polygons(col=vir_10[y], alpha = 0.2))))
         }
       else{
-      assign(paste0(TR_sUDsn[i],"a",y),(assign(paste0("tmbase_",TR_sUDsn[i],y),tm_shape(QU_TR_SA.shp, bbox = bbox_newTR) + tm_borders() + tm_layout(frame = TRUE, main.title = paste0(TR_sUDsn[[i]], " Year: 20",y+1), main.title.size =0.8)) + assign(paste0(TR_sUDsn[i],y),tm_shape(TR_sUDs[[i]][[y]]) + tm_layout(frame = TRUE) + tm_polygons(col=vir_10[y], alpha = 0.2))))
+      assign(paste0(TR_sUDsn[i],"a",y),(assign(paste0("tmbase_",TR_sUDsn[i],y),tm_shape(QU_TR_SA.shp, bbox = bbox_newTR) + tm_borders() + tm_layout(frame = TRUE, main.title = paste0(TR_sUDsn[[i]], " Year: 20",y+1), main.title.size =0.8)) + assign(paste0(TR_sUDsn[i],y),tm_shape(st_as_sf(TR_sUDs[[i]][[y]])) + tm_layout(frame = TRUE) + tm_polygons(col=vir_10[y], alpha = 0.2))))
         
       }
       }
@@ -324,13 +335,15 @@ DEM4 <- project(DEM4, crs("EPSG:32610"))
 DEM <- merge(DEM,DEM4)
 
 writeRaster(DEM, paste0(here("Input Data"),"/ALOS_DEM_FULL.tif"),overwrite=TRUE, gdal=c("COMPRESS=DEFLATE", "TFW=YES"))
+DEM <- rast(paste0(here("Input Data"),"/ALOS_DEM_FULL.tif"))
 
-tcrop <- rast(nrows=5493, ncols=6908, nlyrs=1, xmin=565000, xmax=650000, 
+tcrop <- rast(nrows=5493, ncols=6908, nlyrs=1, xmin=565000, xmax=655000, 
           ymin=6072600, ymax=6131000, crs=crs(DEM),val=1)
           
 DEM <- crop(DEM,tcrop)
 
 writeRaster(DEM, paste0(here("Input Data"),"/ALOS_DEM.tif"),overwrite=TRUE, gdal=c("COMPRESS=DEFLATE", "TFW=YES"))
+
 DEM <- rast(paste0(here("Input Data"),"/ALOS_DEM.tif"))
 
 ```
@@ -348,7 +361,6 @@ BMUDdist <- data.frame()
 
 for(i in 1:length(BM_sUDsn)){
     for(y in 1:length(BM_sUDs[[i]])){
-      #assign(paste0(BM_sUDsn[i],y,"_centroid"),assign(paste0(BM_sUDsn[i],y),st_centroid(st_as_sf(BM_sUDs[[i]][[y]]))))
       centroidL[[clc]] <- st_centroid(st_as_sf(BM_sUDs[[i]][[y]]))
       centroidLn[clc] <- paste0(BM_sUDsn[i],"_",substr(names(BM_sUDs[[i]][y]),8,11),"_centroid")
       
@@ -485,9 +497,9 @@ assign(paste0("Trackbase_",BM_sUDsn[i]),tm_shape(QU_BM_SA.shp, bbox = bbox_newBM
 
 ## cenli short for centroid line
 ## cen is centroid
-centrack_BMWI <- Trackbase_BMWI + cenli_BMWI_1 + cenli_BMWI_2 + cenli_BMWI_3 + cenli_BMWI_4 + cenli_BMWI_5 + cenli_BMWI_6 + cenli_BMWI_7 + cenli_BMWI_8 + cenli_BMWI_9 + cenli_BMWI_10 + cenli_BMWI_11 + cenli_BMWI_12 + cenli_BMWI_13 + cenli_BMWI_14 + cenli_BMWI_15 + cenli_BMWI_16 + cenli_BMWI_17 + cenli_BMWI_18 + cen_BMWI1 + cen_BMWI2 + cen_BMWI3 + cen_BMWI4 + cen_BMWI5 + cen_BMWI6 + cen_BMWI7 + cen_BMWI8 + cen_BMWI9 + cen_BMWI10 + cen_BMWI11 + cen_BMWI12 + cen_BMWI13 + cen_BMWI14 + cen_BMWI15 + cen_BMWI16 + cen_BMWI17 + cen_BMWI18 + cen_BMWI19
+centrack_BMWI <- Trackbase_BMWI + cenli_BMWI_1 + cenli_BMWI_2 + cenli_BMWI_3 + cenli_BMWI_4 + cenli_BMWI_5 + cenli_BMWI_6 + cenli_BMWI_7 + cenli_BMWI_8 + cenli_BMWI_9 + cenli_BMWI_10 + cenli_BMWI_11 + cenli_BMWI_12 + cenli_BMWI_13 + cenli_BMWI_14 + cenli_BMWI_15 + cenli_BMWI_16 + cenli_BMWI_17 + cenli_BMWI_18 + cenli_BMWI_19 + cen_BMWI1 + cen_BMWI2 + cen_BMWI3 + cen_BMWI4 + cen_BMWI5 + cen_BMWI6 + cen_BMWI7 + cen_BMWI8 + cen_BMWI9 + cen_BMWI10 + cen_BMWI11 + cen_BMWI12 + cen_BMWI13 + cen_BMWI14 + cen_BMWI15 + cen_BMWI16 + cen_BMWI17 + cen_BMWI18 + cen_BMWI19 + cen_BMWI20
 
-centrack_BMCA <- Trackbase_BMCA + cenli_BMCA_1 + cenli_BMCA_2 + cenli_BMCA_3 + cenli_BMCA_4 + cenli_BMCA_5 + cenli_BMCA_6 + cenli_BMCA_7 + cenli_BMCA_8 + cenli_BMCA_9 + cenli_BMCA_10 + cenli_BMCA_11 + cenli_BMCA_12 + cenli_BMCA_13 + cenli_BMCA_14 + cenli_BMCA_15 + cenli_BMCA_16 + cen_BMCA1 + cen_BMCA2 + cen_BMCA3 + cen_BMCA4 + cen_BMCA5 + cen_BMCA6 + cen_BMCA7 + cen_BMCA8 + cen_BMCA9 + cen_BMCA10 + cen_BMCA11 + cen_BMCA12 + cen_BMCA13 + cen_BMCA14 + cen_BMCA15 + cen_BMCA16 + cen_BMCA17
+centrack_BMCA <- Trackbase_BMCA + cenli_BMCA_1 + cenli_BMCA_2 + cenli_BMCA_3 + cenli_BMCA_4 + cenli_BMCA_5 + cenli_BMCA_6 + cenli_BMCA_7 + cenli_BMCA_8 + cenli_BMCA_9 + cenli_BMCA_10 + cenli_BMCA_11 + cenli_BMCA_12 + cenli_BMCA_13 + cenli_BMCA_14 + cenli_BMCA_15 + cenli_BMCA_16 + cenli_BMCA_17 + cen_BMCA1 + cen_BMCA2 + cen_BMCA3 + cen_BMCA4 + cen_BMCA5 + cen_BMCA6 + cen_BMCA7 + cen_BMCA8 + cen_BMCA9 + cen_BMCA10 + cen_BMCA11 + cen_BMCA12 + cen_BMCA13 + cen_BMCA14 + cen_BMCA15 + cen_BMCA16 + cen_BMCA17
 
 centrack_BMSU <- Trackbase_BMSU + cenli_BMSU_1 + cenli_BMSU_2 + cenli_BMSU_3 + cenli_BMSU_4 + cenli_BMSU_5 + cenli_BMSU_6 + cenli_BMSU_7 + cenli_BMSU_8 + cenli_BMSU_9 + cenli_BMSU_10 + cenli_BMSU_11 + cenli_BMSU_12 + cenli_BMSU_13 + cenli_BMSU_14 + cenli_BMSU_15 + cenli_BMSU_16 + cenli_BMSU_17 + cen_BMSU1 + cen_BMSU2 + cen_BMSU3 + cen_BMSU4 + cen_BMSU5 + cen_BMSU6 + cen_BMSU7 + cen_BMSU8 + cen_BMSU9 + cen_BMSU10 + cen_BMSU11 + cen_BMSU12 + cen_BMSU13 + cen_BMSU14 + cen_BMSU15 + cen_BMSU16 + cen_BMSU17 + cen_BMSU18
 
@@ -508,7 +520,6 @@ TRUDdist <- data.frame()
 
 for(i in 1:length(TR_sUDsn)){
     for(y in 1:length(TR_sUDs[[i]])){
-      #assign(paste0(TR_sUDsn[i],y,"_centroid"),assign(paste0(TR_sUDsn[i],y),st_centroid(st_as_sf(TR_sUDs[[i]][[y]]))))
       centroidL[[clc]] <- st_centroid(st_as_sf(TR_sUDs[[i]][[y]]))
       centroidLn[clc] <- paste0(TR_sUDsn[i],"_",substr(names(TR_sUDs[[i]][y]),8,11),"_centroid")
       if(clc > 1){
@@ -643,11 +654,11 @@ assign(paste0("Trackbase_",TR_sUDsn[i]),tm_shape(QU_TR_SA.shp, bbox = bbox_newTR
 
 ## cenli short for centroid line
 ## cen is centroid
-centrack_TRWI <- Trackbase_TRWI + cenli_TRWI_1 + cenli_TRWI_2 + cenli_TRWI_3 + cenli_TRWI_4 + cenli_TRWI_5 + cenli_TRWI_6 + cenli_TRWI_7 + cenli_TRWI_8 + cenli_TRWI_9 + cenli_TRWI_10 + cenli_TRWI_11 + cenli_TRWI_12 + cenli_TRWI_13 + cenli_TRWI_14 + cenli_TRWI_15 + cenli_TRWI_16 + cen_TRWI1 + cen_TRWI2 + cen_TRWI3 + cen_TRWI4 + cen_TRWI5 + cen_TRWI6 + cen_TRWI7 + cen_TRWI8 + cen_TRWI9 + cen_TRWI10 + cen_TRWI11 + cen_TRWI12 + cen_TRWI13 + cen_TRWI14 + cen_TRWI15 + cen_TRWI16 + cen_TRWI17
+centrack_TRWI <- Trackbase_TRWI + cenli_TRWI_1 + cenli_TRWI_2 + cenli_TRWI_3 + cenli_TRWI_4 + cenli_TRWI_5 + cenli_TRWI_6 + cenli_TRWI_7 + cenli_TRWI_8 + cenli_TRWI_9 + cenli_TRWI_10 + cenli_TRWI_11 + cenli_TRWI_12 + cenli_TRWI_13 + cenli_TRWI_14 + cenli_TRWI_15 + cen_TRWI1 + cen_TRWI2 + cen_TRWI3 + cen_TRWI4 + cen_TRWI5 + cen_TRWI6 + cen_TRWI7 + cen_TRWI8 + cen_TRWI9 + cen_TRWI10 + cen_TRWI11 + cen_TRWI12 + cen_TRWI13 + cen_TRWI14 + cen_TRWI15 + cen_TRWI16
 
-centrack_TRCA <- Trackbase_TRCA + cenli_TRCA_1 + cenli_TRCA_2 + cenli_TRCA_3 + cenli_TRCA_4 + cenli_TRCA_5 + cenli_TRCA_6 + cenli_TRCA_7 + cenli_TRCA_8 + cenli_TRCA_9 + cenli_TRCA_10 + cenli_TRCA_11 + cenli_TRCA_12 + cenli_TRCA_13 + cenli_TRCA_14 + cenli_TRCA_15 + cen_TRCA1 + cen_TRCA2 + cen_TRCA3 + cen_TRCA4 + cen_TRCA5 + cen_TRCA6 + cen_TRCA7 + cen_TRCA8 + cen_TRCA9 + cen_TRCA10 + cen_TRCA11 + cen_TRCA12 + cen_TRCA13 + cen_TRCA14 + cen_TRCA15
+centrack_TRCA <- Trackbase_TRCA + cenli_TRCA_1 + cenli_TRCA_2 + cenli_TRCA_3 + cenli_TRCA_4 + cenli_TRCA_5 + cenli_TRCA_6 + cenli_TRCA_7 + cenli_TRCA_8 + cenli_TRCA_9 + cenli_TRCA_10 + cenli_TRCA_11 + cenli_TRCA_12 + cenli_TRCA_13 + cenli_TRCA_14 + cen_TRCA1 + cen_TRCA2 + cen_TRCA3 + cen_TRCA4 + cen_TRCA5 + cen_TRCA6 + cen_TRCA7 + cen_TRCA8 + cen_TRCA9 + cen_TRCA10 + cen_TRCA11 + cen_TRCA12 + cen_TRCA13 + cen_TRCA14 + cen_TRCA15
 
-centrack_TRSU <- Trackbase_TRSU + cenli_TRSU_1 + cenli_TRSU_2 + cenli_TRSU_3 + cenli_TRSU_4 + cenli_TRSU_5 + cenli_TRSU_6 + cenli_TRSU_7 + cenli_TRSU_8 + cenli_TRSU_9 + cenli_TRSU_10 + cenli_TRSU_11 + cenli_TRSU_12 + cenli_TRSU_13 + cenli_TRSU_14 + cenli_TRSU_15 + cen_TRSU1 + cen_TRSU2 + cen_TRSU3 + cen_TRSU4 + cen_TRSU5 + cen_TRSU6 + cen_TRSU7 + cen_TRSU8 + cen_TRSU9 + cen_TRSU10 + cen_TRSU11 + cen_TRSU12 + cen_TRSU13 + cen_TRSU14 + cen_TRSU15
+centrack_TRSU <- Trackbase_TRSU + cenli_TRSU_1 + cenli_TRSU_2 + cenli_TRSU_3 + cenli_TRSU_4 + cenli_TRSU_5 + cenli_TRSU_6 + cenli_TRSU_7 + cenli_TRSU_8 + cenli_TRSU_9 + cenli_TRSU_10 + cenli_TRSU_11 + cenli_TRSU_12 + cenli_TRSU_13 + cenli_TRSU_14 + cen_TRSU1 + cen_TRSU2 + cen_TRSU3 + cen_TRSU4 + cen_TRSU5 + cen_TRSU6 + cen_TRSU7 + cen_TRSU8 + cen_TRSU9 + cen_TRSU10 + cen_TRSU11 + cen_TRSU12 + cen_TRSU13 + cen_TRSU14 + cen_TRSU15
 
 centrack_TRRU <- Trackbase_TRRU + cenli_TRRU_1 + cenli_TRRU_2 + cenli_TRRU_3 + cenli_TRRU_4 + cenli_TRRU_5 + cenli_TRRU_6 + cenli_TRRU_7 + cenli_TRRU_8 + cenli_TRRU_9 + cenli_TRRU_10 + cenli_TRRU_11 + cenli_TRRU_12 + cenli_TRRU_13 + cen_TRRU1 + cen_TRRU2 + cen_TRRU3 + cen_TRRU4 + cen_TRRU5 + cen_TRRU6 + cen_TRRU7 + cen_TRRU8 + cen_TRRU9 + cen_TRRU10 + cen_TRRU11 + cen_TRRU12 + cen_TRRU13 + cen_TRRU14
 
@@ -655,11 +666,11 @@ centrack_TRRU <- Trackbase_TRRU + cenli_TRRU_1 + cenli_TRRU_2 + cenli_TRRU_3 + c
 
 ### Enlarged areas
 ```{r , echo=FALSE}
-centrack_Agg_WI <- WRbase_WI + cenli_BMWI_1 + cenli_BMWI_2 + cenli_BMWI_3 + cenli_BMWI_4 + cenli_BMWI_5 + cenli_BMWI_6 + cenli_BMWI_7 + cenli_BMWI_8 + cenli_BMWI_9 + cenli_BMWI_10 + cenli_BMWI_11 + cenli_BMWI_12 + cenli_BMWI_13 + cenli_BMWI_14 + cenli_BMWI_15 + cenli_BMWI_16 + cenli_BMWI_17+ cenli_BMWI_18 + cen_BMWI1 + cen_BMWI2 + cen_BMWI3 + cen_BMWI4 + cen_BMWI5 + cen_BMWI6 + cen_BMWI7 + cen_BMWI8 + cen_BMWI9 + cen_BMWI10 + cen_BMWI11 + cen_BMWI12 + cen_BMWI13 + cen_BMWI14 + cen_BMWI15 + cen_BMWI16 + cen_BMWI17 + cen_BMWI18 + cen_BMWI19 + cenli_TRWI_1 + cenli_TRWI_2 + cenli_TRWI_3 + cenli_TRWI_4 + cenli_TRWI_5 + cenli_TRWI_6 + cenli_TRWI_7 + cenli_TRWI_8 + cenli_TRWI_9 + cenli_TRWI_10 + cenli_TRWI_11 + cenli_TRWI_12 + cenli_TRWI_13 + cenli_TRWI_14 + cenli_TRWI_15 + cenli_TRWI_16 + cen_TRWI1 + cen_TRWI2 + cen_TRWI3 + cen_TRWI4 + cen_TRWI5 + cen_TRWI6 + cen_TRWI7 + cen_TRWI8 + cen_TRWI9 + cen_TRWI10 + cen_TRWI11 + cen_TRWI12 + cen_TRWI13 + cen_TRWI14 + cen_TRWI15 + cen_TRWI16 + cen_TRWI17
+centrack_Agg_WI <- WRbase_WI + cenli_BMWI_1 + cenli_BMWI_2 + cenli_BMWI_3 + cenli_BMWI_4 + cenli_BMWI_5 + cenli_BMWI_6 + cenli_BMWI_7 + cenli_BMWI_8 + cenli_BMWI_9 + cenli_BMWI_10 + cenli_BMWI_11 + cenli_BMWI_12 + cenli_BMWI_13 + cenli_BMWI_14 + cenli_BMWI_15 + cenli_BMWI_16 + cenli_BMWI_17 + cenli_BMWI_18 + cenli_BMWI_19 + cen_BMWI1 + cen_BMWI2 + cen_BMWI3 + cen_BMWI4 + cen_BMWI5 + cen_BMWI6 + cen_BMWI7 + cen_BMWI8 + cen_BMWI9 + cen_BMWI10 + cen_BMWI11 + cen_BMWI12 + cen_BMWI13 + cen_BMWI14 + cen_BMWI15 + cen_BMWI16 + cen_BMWI17 + cen_BMWI18 + cen_BMWI19 + cen_BMWI20 + cenli_TRWI_1 + cenli_TRWI_2 + cenli_TRWI_3 + cenli_TRWI_4 + cenli_TRWI_5 + cenli_TRWI_6 + cenli_TRWI_7 + cenli_TRWI_8 + cenli_TRWI_9 + cenli_TRWI_10 + cenli_TRWI_11 + cenli_TRWI_12 + cenli_TRWI_13 + cenli_TRWI_14 + cenli_TRWI_15 + cenli_TRWI_16 + cen_TRWI1 + cen_TRWI2 + cen_TRWI3 + cen_TRWI4 + cen_TRWI5 + cen_TRWI6 + cen_TRWI7 + cen_TRWI8 + cen_TRWI9 + cen_TRWI10 + cen_TRWI11 + cen_TRWI12 + cen_TRWI13 + cen_TRWI14 + cen_TRWI15 + cen_TRWI16
 
 centrack_Agg_CA <- WRbase_CA + cenli_BMCA_1 + cenli_BMCA_2 + cenli_BMCA_3 + cenli_BMCA_4 + cenli_BMCA_5 + cenli_BMCA_6 + cenli_BMCA_7 + cenli_BMCA_8 + cenli_BMCA_9 + cenli_BMCA_10 + cenli_BMCA_11 + cenli_BMCA_12 + cenli_BMCA_13 + cenli_BMCA_14 + cenli_BMCA_15 + cenli_BMCA_16 + cen_BMCA1 + cen_BMCA2 + cen_BMCA3 + cen_BMCA4 + cen_BMCA5 + cen_BMCA6 + cen_BMCA7 + cen_BMCA8 + cen_BMCA9 + cen_BMCA10 + cen_BMCA11 + cen_BMCA12 + cen_BMCA13 + cen_BMCA14 + cen_BMCA15 + cen_BMCA16 + cen_BMCA17 + cenli_TRCA_1 + cenli_TRCA_2 + cenli_TRCA_3 + cenli_TRCA_4 + cenli_TRCA_5 + cenli_TRCA_6 + cenli_TRCA_7 + cenli_TRCA_8 + cenli_TRCA_9 + cenli_TRCA_10 + cenli_TRCA_11 + cenli_TRCA_12 + cenli_TRCA_13 + cenli_TRCA_14 + cenli_TRCA_15 + cen_TRCA1 + cen_TRCA2 + cen_TRCA3 + cen_TRCA4 + cen_TRCA5 + cen_TRCA6 + cen_TRCA7 + cen_TRCA8 + cen_TRCA9 + cen_TRCA10 + cen_TRCA11 + cen_TRCA12 + cen_TRCA13 + cen_TRCA14 + cen_TRCA15
 
-centrack_Agg_SU <- WRbase_SU + cenli_BMSU_1 + cenli_BMSU_2 + cenli_BMSU_3 + cenli_BMSU_4 + cenli_BMSU_5 + cenli_BMSU_6 + cenli_BMSU_7 + cenli_BMSU_8 + cenli_BMSU_9 + cenli_BMSU_10 + cenli_BMSU_11 + cenli_BMSU_12 + cenli_BMSU_13 + cenli_BMSU_14 + cenli_BMSU_15 + cenli_BMSU_16 + cen_BMSU1 + cen_BMSU2 + cen_BMSU3 + cen_BMSU4 + cen_BMSU5 + cen_BMSU6 + cen_BMSU7 + cen_BMSU8 + cen_BMSU9 + cen_BMSU10 + cen_BMSU11 + cen_BMSU12 + cen_BMSU13 + cen_BMSU14 + cen_BMSU15 + cen_BMSU16 + cen_BMSU17 + cen_BMSU18 + cenli_TRSU_1 + cenli_TRSU_2 + cenli_TRSU_3 + cenli_TRSU_4 + cenli_TRSU_5 + cenli_TRSU_6 + cenli_TRSU_7 + cenli_TRSU_8 + cenli_TRSU_9 + cenli_TRSU_10 + cenli_TRSU_11 + cenli_TRSU_12 + cenli_TRSU_13 + cenli_TRSU_14 + cenli_TRSU_15 + cen_TRSU1 + cen_TRSU2 + cen_TRSU3 + cen_TRSU4 + cen_TRSU5 + cen_TRSU6 + cen_TRSU7 + cen_TRSU8 + cen_TRSU9 + cen_TRSU10 + cen_TRSU11 + cen_TRSU12 + cen_TRSU13 + cen_TRSU14 + cen_TRSU15
+centrack_Agg_SU <- WRbase_SU + cenli_BMSU_1 + cenli_BMSU_2 + cenli_BMSU_3 + cenli_BMSU_4 + cenli_BMSU_5 + cenli_BMSU_6 + cenli_BMSU_7 + cenli_BMSU_8 + cenli_BMSU_9 + cenli_BMSU_10 + cenli_BMSU_11 + cenli_BMSU_12 + cenli_BMSU_13 + cenli_BMSU_14 + cenli_BMSU_15 + cenli_BMSU_16 + cenli_BMSU_17 + cen_BMSU1 + cen_BMSU2 + cen_BMSU3 + cen_BMSU4 + cen_BMSU5 + cen_BMSU6 + cen_BMSU7 + cen_BMSU8 + cen_BMSU9 + cen_BMSU10 + cen_BMSU11 + cen_BMSU12 + cen_BMSU13 + cen_BMSU14 + cen_BMSU15 + cen_BMSU16 + cen_BMSU17 + cen_BMSU18 + cenli_TRSU_1 + cenli_TRSU_2 + cenli_TRSU_3 + cenli_TRSU_4 + cenli_TRSU_5 + cenli_TRSU_6 + cenli_TRSU_7 + cenli_TRSU_8 + cenli_TRSU_9 + cenli_TRSU_10 + cenli_TRSU_11 + cenli_TRSU_12 + cenli_TRSU_13 + cenli_TRSU_14 + cen_TRSU1 + cen_TRSU2 + cen_TRSU3 + cen_TRSU4 + cen_TRSU5 + cen_TRSU6 + cen_TRSU7 + cen_TRSU8 + cen_TRSU9 + cen_TRSU10 + cen_TRSU11 + cen_TRSU12 + cen_TRSU13 + cen_TRSU14 + cen_TRSU15
 
 centrack_Agg_RU <- WRbase_RU + cenli_BMRU_1 + cenli_BMRU_2 + cenli_BMRU_3 + cenli_BMRU_4 + cenli_BMRU_5 + cenli_BMRU_6 + cenli_BMRU_7 + cenli_BMRU_8 + cenli_BMRU_9 + cenli_BMRU_10 + cenli_BMRU_11 + cenli_BMRU_12 + cenli_BMRU_13 + cenli_BMRU_14 + cenli_BMRU_15 + cenli_BMRU_16 + cenli_BMRU_17 + cen_BMRU1 + cen_BMRU2 + cen_BMRU3 + cen_BMRU4 + cen_BMRU5 + cen_BMRU6 + cen_BMRU7 + cen_BMRU8 + cen_BMRU9 + cen_BMRU10 + cen_BMRU11 + cen_BMRU12 + cen_BMRU13 + cen_BMRU14 + cen_BMRU15 + cen_BMRU16 + cen_BMRU17 + cen_BMRU18 + cenli_TRRU_1 + cenli_TRRU_2 + cenli_TRRU_3 + cenli_TRRU_4 + cenli_TRRU_5 + cenli_TRRU_6 + cenli_TRRU_7 + cenli_TRRU_8 + cenli_TRRU_9 + cenli_TRRU_10 + cenli_TRRU_11 + cenli_TRRU_12 + cenli_TRRU_13 + cen_TRRU1 + cen_TRRU2 + cen_TRRU3 + cen_TRRU4 + cen_TRRU5 + cen_TRRU6 + cen_TRRU7 + cen_TRRU8 + cen_TRRU9 + cen_TRRU10 + cen_TRRU11 + cen_TRRU12 + cen_TRRU13 + cen_TRRU14
 

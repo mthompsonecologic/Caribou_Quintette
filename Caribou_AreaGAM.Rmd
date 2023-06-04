@@ -18,7 +18,7 @@ if(!require(mgcv)){install.packages("mgcv")}
 if(!require(gratia)){install.packages("gratia")}
 if(!require(bbmle)){install.packages("bbmle")}
 if(!require(lme4)){install.packages("lme4")}
-
+if(!require(lme4)){install.packages("nlme")}
 
 
 library(here)
@@ -26,20 +26,43 @@ library(mgcv)
 library(gratia)
 library(bbmle) 
 library(lme4)
+library(nlme)
+
+require("nlme")
 
 ```
 
 ## GAM Season Factor
 In this first analysis of the data I treated season as a factor variable, but this is incorrect. It is an ordered variable and can be modeled with GAMs (Jensen et al., 2022; Simpson 2014).
 
+In the methods our period descriptions are still coarse textured 2002-2005, 2006-2014, and 2015-2020 so perhaps we could get a bit more precise by mixing in our season definitions as well.  In that case our data structure would have the following period start and end dates: 
+
+*PreActive:
+start Calving May 01, 2002 – end Winter April 30, 2005 – 3 complete biological years
+
+*Active:
+start Calving May 01, 2005 – end Winter April 30, 2014 – 9 complete biological years
+
+*PostActive and no wolf removal:
+start Calving May 01, 2014 – end Rut October 31, 2015 – 1.5 biological years
+
+*PostActive and wolf removal:
+start Winter November 01, 2015 – end Winter January 30,2021 –5.25 biological years  (missing 3 months of the last winter
+
+Ideally, I think, it would look more like this, without year, and perhaps you need a separate model for each season or a random slope/intercept on season in a mixed model:
+
+## Clayton Lamb model suggestion:
+Value (= UD 50% area) ~  factor(Study Area) + factor(MiningActive/NotActive) +  factor(Study Area) * factor(MiningActive/NotActive)
+
+
 #References
 Jensen, S. A., Webb, J. R., Simpson, G. L., Baulch, H. M., Leavitt, P. R., & Finlay, K. (2022). Seasonal variability of CO2, CH4, and N2O content and fluxes in small agricultural reservoirs of the northern Great Plains. Frontiers in Environmental Science, 10. https://doi.org/10.3389/fenvs.2022.895531
 
 Simpson, G.A. Modelling seasonal data with GAMs. Blog: From the bottom of the heap. https://fromthebottomoftheheap.net/2014/05/09/modelling-seasonal-data-with-gam/
 
-```{r GAM, echo=FALSE}
+```{r GAMprep, echo=FALSE}
 
-BMTR_sUDs_areas <- read.csv(paste0(here("adeHRoutput_noclip","Seasons"),"/Agg_UD_areasWI.csv"),	stringsAsFactors=FALSE,	na.strings="NA")
+BMTR_sUDs_areas <- read.csv(paste0(here("adeHRoutput_noclip","Seasons"),"/Agg_UD_areas.csv"),	stringsAsFactors=FALSE,	na.strings="NA")
 
 ##Proceeding through exploratory examples from Zuur et al. (2009):
 
@@ -49,10 +72,32 @@ BMTR_sUDs_areas$SA <- as.factor(BMTR_sUDs_areas$SA)
 BMTR_sUDs_areas$season <- as.factor(BMTR_sUDs_areas$season)
 BMTR_sUDs_areas$warea <- BMTR_sUDs_areas$area / BMTR_sUDs_areas$nb.reloc
 BMTR_sUDs_areas$yearf <- as.factor(BMTR_sUDs_areas$year)
+
+## Seasons ordered from Calving (1) > Summer (2) > Rutting (3) > Winter (4)
+BMTR_sUDs_areas$seasF <- ifelse(BMTR_sUDs_areas$season == "CA", 1,
+                            ifelse(BMTR_sUDs_areas$season == "SU", 2,
+                              ifelse(BMTR_sUDs_areas$season == "RU", 3,4)))
+
 pairs(BMTR_sUDs_areas)
 
+# Active (A) or Closed (C) mining:
+BMTR_sUDs_areas$Mining <- ifelse(BMTR_sUDs_areas$year >= 2004 & BMTR_sUDs_areas$year <= 2014, "A","C")
+BMTR_sUDs_areas$Mining <- as.factor(BMTR_sUDs_areas$Mining)
+
+
+# Wolf removal (R): Winter November 01, 2015 – end Winter January 30,2021,
+# or not (W)
+BMTR_sUDs_areas$Wolf <- ifelse(BMTR_sUDs_areas$year >= 2015 &
+                               BMTR_sUDs_areas$year <= 2021 , "R","W")
+BMTR_sUDs_areas[which(BMTR_sUDs_areas$year == 2015 & BMTR_sUDs_areas$season == "CA"),10] = "W"
+BMTR_sUDs_areas[which(BMTR_sUDs_areas$year == 2015 & BMTR_sUDs_areas$season == "SU"),10] = "W"
+BMTR_sUDs_areas[which(BMTR_sUDs_areas$year == 2015 & BMTR_sUDs_areas$season == "RU"),10] = "W"
+BMTR_sUDs_areas$Wolf <- as.factor(BMTR_sUDs_areas$Wolf)
+
+## Source code from Zuur et al. (2009):
 source(paste0(here(),"/HighstatLibV10.R"))
 
+rownames(BMTR_sUDs_areas) <- c(1:133)
 M1 <- lm(warea ~ year, subset = (BMTR_sUDs_areas$SA == "BM"), data = BMTR_sUDs_areas)
 op <- par(mfrow = c(2,2))
 plot(M1, add.smooth = FALSE)
@@ -63,10 +108,11 @@ op <- par(mfrow = c(2,2))
 plot(M2, add.smooth = FALSE)
 par(op)
 
-## Non-linear. There is Cooks distance beyond the threshold value of 1 (see Zuur et al. 2009) - needs to be managed. Item 33 in TR is highly problematic - will remove this one:
+## Non-linear. There is Cooks distance beyond the threshold value of 1 (see Zuur et al. 2009) - needs to be managed. Item 76 in TR 2:3 in BM are highly problematic, so remove:
 
-BMTR_sUDs_areasr <- BMTR_sUDs_areas[c(1:32,34:133),]
+BMTR_sUDs_areasr <- BMTR_sUDs_areas[c(1,4:75,77:133),]
 
+## To model winter only, warea:
 TR_sUDs_areasWIr <- BMTR_sUDs_areasr[which(BMTR_sUDs_areasr$SA == "TR" & BMTR_sUDs_areasr$season == "WI"),]
 BM_sUDs_areasWIr <- BMTR_sUDs_areasr[which(BMTR_sUDs_areasr$SA == "BM" & BMTR_sUDs_areasr$season == "WI"),]
 
@@ -82,198 +128,144 @@ BMTR_sUDs_CAr <- BMTR_sUDs_areasr[which(BMTR_sUDs_areasr$season == "CA"),]
 BMTR_sUDs_SUr <- BMTR_sUDs_areasr[which(BMTR_sUDs_areasr$season == "SU"),]
 BMTR_sUDs_RUr <- BMTR_sUDs_areasr[which(BMTR_sUDs_areasr$season == "RU"),]
 
-
 ```
 
 ## GAMs
 
-Plots of core UD areas over time are heterogenous between seasons and between study areas. The question being asked is if there is a difference between TR and BM in the dynamics of area amount by season across years. The prediction is that the winter range will have larger areas where there is more disturbance as this will spread the individuals apart (dispersion) or drive them to move greater distances. Roman and Bullmoose (= SA, Study Area) are modeled as independent factors (i.e., the experimental treatment).
+Plots of core UD areas over time are heterogenous between seasons and between study areas. The question being asked is if there is a difference between TR and BM in the dynamics of area amount by season, across years, by treatments. The prediction is that the winter range will have larger areas where there is more disturbance as this will spread the individuals apart (dispersion) or drive them to move greater distances. The introduction of wolf management will have an effect on the range dynamics staying more local (smaller). Roman and Bullmoose (= SA, Study Area) are modeled as independent factors (i.e., the experimental treatment).
+
+## GAM Season Ordered
+Season is analyzed as an ordered variable adapting method of Simpson (2014).
+
+#References
+
+Simpson, G.A. Modelling seasonal data with GAMs. Blog: From the bottom of the heap. https://fromthebottomoftheheap.net/2014/05/09/modelling-seasonal-data-with-gam/
+
 
 ```{r}
 
-# area ~ SA + year + season
-GAM1 = gam(warea ~ s(SA, bs = 're'),
-                  data = BMTR_sUDs_areas,
-                  method = 'REML')
 
-GAM2 = gam(warea ~ s(SA, bs = 're') + s(yearf, bs = 're') + s(season, bs = 're'),
-                  data = BMTR_sUDs_areas,
-                  method = 'REML')
+GAM1 = gam(warea ~  s(SA, bs = 're') +
+                    s(seasF, bs = "cc", k = 4) +
+                    s(year, k=19) +
+                    s(Mining, bs = 're') +
+                    s(Wolf, bs = 're'),
+                    data = BMTR_sUDs_areasr,
+                    method = 'REML')
 
-GAM3 = gam(warea ~ s(SA, bs = 're') + s(season, bs = 're'),
-                  data = BMTR_sUDs_areas,
-                  method = 'REML')
+summary(GAM1)
 
-GAM4 = gam(warea ~ s(SA, bs = 're') + s(yearf, bs = 're'),
-                  data = BMTR_sUDs_areas,
-                  method = 'REML')
+GAM2 = gam(warea ~  s(SA, bs = 're') +
+                    #s(seasF, bs = "cc", k = 4) +
+                    s(year, k=19) +
+                    s(Mining, bs = 're') +
+                    s(Wolf, bs = 're'),
+                    data = BMTR_sUDs_areasr,
+                    method = 'REML')
 
-GAM5 = gam(warea ~ s(SA, bs = 're') + s(season,yearf, bs = 're'),
-                  data = BMTR_sUDs_areas,
-                  method = 'REML')
+summary(GAM2)
 
-GAM6 = gam(warea ~ s(SA,season, bs = 're') +  s(yearf, bs = 're'),
-                  data = BMTR_sUDs_areas,
-                  method = 'REML')
+GAM3 = gam(warea ~  s(SA, bs = 're') +
+                    s(seasF, bs = "cc", k = 4) +
+                    #s(year, k=19) +
+                    s(Mining, bs = 're') +
+                    s(Wolf, bs = 're'),
+                    data = BMTR_sUDs_areasr,
+                    method = 'REML')
 
-GAM7 = gam(warea ~ s(SA,yearf, bs = 're') + s(season, bs = 're'),
-                  data = BMTR_sUDs_areas,
-                  method = 'REML')
+summary(GAM4)
 
-GAM8 = gam(warea ~ SA + s(season, bs = 're'),
-                  data = BMTR_sUDs_areas,
-                  method = 'REML')
+GAM4 = gam(warea ~  s(SA, bs = 're') +
+                    s(seasF, bs = "cc", k = 4) +
+                    s(year, k=19) +
+                    #s(Mining, bs = 're') +
+                    s(Wolf, bs = 're'),
+                    data = BMTR_sUDs_areasr,
+                    method = 'REML')
+summary(GAM4)
 
-GAM9 = gam(warea ~ SA + s(season, yearf, bs = 're'),
-                  data = BMTR_sUDs_areas,
-                  method = 'REML')
+GAM5 = gam(warea ~  s(SA, bs = 're') +
+                    s(seasF, bs = "cc", k = 4) +
+                    s(year, k=19) +
+                    s(Mining, bs = 're'),
+                    #s(Wolf, bs = 're'),
+                    data = BMTR_sUDs_areasr,
+                    method = 'REML')
 
-GAM10 = gam(warea ~ SA + season + s(yearf, bs = 're'),
-                  data = BMTR_sUDs_areas,
-                  method = 'REML')
+summary(GAM5)
 
-GAM11 = gam(warea ~ s(year),
-                  data = BMTR_sUDs_areas,
-                  method = "REML")
+GAM6 = gam(warea ~  s(SA, bs = 're') +
+                    #s(seasF, bs = "cc", k = 4) +
+                    #s(year, k=19) +
+                    s(Mining, bs = 're'),
+                    #s(Wolf, bs = 're'),
+                    data = BMTR_sUDs_areasr,
+                    method = 'REML')
 
-GAM12 = gam(warea ~ s(SA, bs = 're') + s(season, bs = 're') + s(year),
-                  data = BMTR_sUDs_areas,
-                  method = 'REML')
+summary(GAM6)
 
-GAM13 = gam(warea ~ s(SA, bs = 're') + s(year),
-                  data = BMTR_sUDs_areas,
-                  method = "REML")
-
-GAM14 = gam(warea ~ s(SA, bs = 're') + s(yearf, bs = 're'),
-                  data = BMTR_sUDs_areas,
-                  method = "REML")
-
-
-
-AICtab(GAM1, GAM2, GAM3, GAM4, GAM5,GAM6,GAM7,GAM8,GAM9,GAM10,GAM11,GAM12,GAM13,GAM14)
-AIC(GAM1, GAM2, GAM3, GAM4, GAM5,GAM6,GAM7,GAM8,GAM9,GAM10,GAM11,GAM12,GAM13,GAM14)
-
-## outlier removed
-# area ~ SA + year + season
-GAMr1 = gam(warea ~ s(SA, bs = 're'),
-                  data = BMTR_sUDs_areasr,
-                  method = 'REML')
-
-GAMr2 = gam(warea ~ s(SA, bs = 're') + s(yearf, bs = 're') + s(season, bs = 're'),
-                  data = BMTR_sUDs_areasr,
-                  method = 'REML')
-
-GAMr3 = gam(warea ~ s(SA, bs = 're') + s(season, bs = 're'),
-                  data = BMTR_sUDs_areasr,
-                  method = 'REML')
-
-GAMr4 = gam(warea ~ s(SA, bs = 're') + s(yearf, bs = 're'),
-                  data = BMTR_sUDs_areasr,
-                  method = 'REML')
-
-GAMr5 = gam(warea ~ s(SA, bs = 're') + s(season,yearf, bs = 're'),
-                  data = BMTR_sUDs_areasr,
-                  method = 'REML')
-
-GAMr6 = gam(warea ~ s(SA,season, bs = 're') +  s(yearf, bs = 're'),
-                  data = BMTR_sUDs_areasr,
-                  method = 'REML')
-
-GAMr7 = gam(warea ~ s(SA,yearf, bs = 're') + s(season, bs = 're'),
-                  data = BMTR_sUDs_areasr,
-                  method = 'REML')
-
-GAMr8 = gam(warea ~ SA + s(season, bs = 're'),
-                  data = BMTR_sUDs_areasr,
-                  method = 'REML')
-
-GAMr9 = gam(warea ~ SA + s(season, yearf, bs = 're'),
-                  data = BMTR_sUDs_areasr,
-                  method = 'REML')
-
-GAMr10 = gam(warea ~ SA + season + s(yearf, bs = 're'),
-                  data = BMTR_sUDs_areasr,
-                  method = 'REML')
-
-GAMr11 = gam(warea ~ s(year),
-                  data = BMTR_sUDs_areas,
-                  method = "REML")
-
-GAMr12 = gam(warea ~ s(SA, bs = 're') + s(season, bs = 're') + s(year),
-                  data = BMTR_sUDs_areasr,
-                  method = 'REML')
-
-GAMr13 = gam(warea ~ s(SA, bs = 're') + s(year),
-                  data = BMTR_sUDs_areasr,
-                  method = "REML")
-
-GAMr14 = gam(warea ~ s(SA, bs = 're') + s(yearf, bs = 're'),
-                  data = BMTR_sUDs_areasr,
-                  method = "REML")
+AIC(GAM1, GAM2, GAM3, GAM4, GAM5, GAM6)
 
 
+layout(matrix(1:2, ncol = 2))
+plot(GAM1$gam, scale = 0)
+layout(1)
 
-AICtab(GAMr1, GAMr2, GAMr3, GAMr4, GAMr5,GAMr6,GAMr7,GAMr8,GAMr10,GAMr11,GAMr12,GAMr13,GAMr14)
-AIC(GAMr1, GAMr2, GAMr3, GAMr4, GAMr5,GAMr6,GAMr7,GAMr8,GAMr10,GAMr11,GAMr12,GAMr13,GAMr14)
+
+layout(matrix(1:2, ncol = 2))
+acf(resid(GAM1$lme), lag.max = 36, main = "ACF")
+pacf(resid(GAM1$lme), lag.max = 36, main = "pACF")
+layout(1)
 
 
-## outlier removed - Winter only
-# area ~ SA + year + season
-GAMwr1 = gam(warea ~ s(SA, bs = 're'),
-                  data = BMTR_sUDs_WIr,
-                  method = 'REML')
+ctrl <- list(niterEM = 0, msVerbose = TRUE, optimMethod="L-BFGS-B")
 
-GAMwr2 = gam(warea ~ s(SA, bs = 're') + s(yearf, bs = 're'),
-                  data = BMTR_sUDs_WIr ,
-                  method = 'REML')
+## AR(1)
+m1 <- gamm(warea ~ s(seasF, bs = "cc", k = 4) + s(year, k = 19) +  s(SA, bs = 're'),
+            data = BMTR_sUDs_areasr, correlation = corARMA(form = ~ 1|season, p = 1),
+            control = ctrl,
+                method = 'REML')
+ 
+## AR(2)
+m2 <- gamm(warea ~ s(seasF, bs = "cc", k = 4) + s(year, k = 19) +  s(SA, bs = 're'),
+            data = BMTR_sUDs_areasr, correlation = corARMA(form = ~ 1|season, p = 2),
+            control = ctrl,
+                method = 'REML')
+ 
+## AR(3)
+m3 <- gamm(warea ~ s(seasF, bs = "cc", k = 4) + s(year, k = 19) +  s(SA, bs = 're'),
+            data = BMTR_sUDs_areasr, correlation = corARMA(form = ~ 1|season, p = 3),
+            control = ctrl,
+                method = 'REML')
 
-GAMwr3 = gam(warea ~ s(SA,yearf, bs = 're'),
-                  data = BMTR_sUDs_areasr,
-                  method = 'REML')
+
+anova(GAM1$lme, m1$lme, m2$lme, m3$lme)
+
+layout(matrix(1:2, ncol = 2))
+plot(m2$gam, scale = 0)
+layout(1)
+
+
+m2b <- gamm(warea ~ s(season, bs = "cc", k = 4) + s(year, k = 19),
+            data = BMTR_sUDs_areasr, correlation = corARMA(form = ~ 1|season, p = 2),
+            control = ctrl,
+                method = 'REML')
+
+
+m2c <- gamm(warea ~ s(season, bs = "cc", k = 4) +  s(SA, bs = 're'),
+            data = BMTR_sUDs_areasr, correlation = corARMA(form = ~ 1|season, p = 2),
+            control = ctrl,
+                method = 'REML')
+
+m2d <- gamm(warea ~ s(year, k = 19) +  s(SA, bs = 're'),
+            data = BMTR_sUDs_areasr, correlation = corARMA(form = ~ 1|season, p = 2),
+            control = ctrl,
+                method = 'REML')
+
+anova(GAM1$lme, m1$lme, m2$lme, m3$lme, m2b$lme, m2c$lme, m2d$lme)
 
 
 
-AICtab(GAMwr1, GAMwr2, GAMwr3)
-AIC(GAMwr1, GAMwr2, GAMwr3)
-
-## outlier removed - CA only
-# area ~ SA + year + season
-GAMcr1 = gam(warea ~ s(SA, bs = 're'),
-                  data = BMTR_sUDs_CAr,
-                  method = 'REML')
-
-GAMcr2 = gam(warea ~ s(SA, bs = 're') + s(yearf, bs = 're'),
-                  data = BMTR_sUDs_CAr ,
-                  method = 'REML')
-
-GAMcr3 = gam(warea ~ s(SA,yearf, bs = 're'),
-                  data = BMTR_sUDs_areasr,
-                  method = 'REML')
-
-
-
-AICtab(GAMcr1, GAMcr2, GAMcr3)
-AIC(GAMcr1, GAMcr2, GAMcr3)
-
-
-## outlier removed - SU only
-# area ~ SA + year + season
-GAMsr1 = gam(warea ~ s(SA, bs = 're'),
-                  data = BMTR_sUDs_SUr,
-                  method = 'REML')
-
-GAMsr2 = gam(warea ~ s(SA, bs = 're') + s(yearf, bs = 're'),
-                  data = BMTR_sUDs_SUr ,
-                  method = 'REML')
-
-GAMsr3 = gam(warea ~ s(SA,yearf, bs = 're'),
-                  data = BMTR_sUDs_areasr,
-                  method = 'REML')
-
-
-
-AICtab(GAMsr1, GAMsr2, GAMsr3)
-AIC(GAMsr1, GAMsr2, GAMsr3)
 
 ## outlier removed - RU only
 # area ~ SA + year + season
@@ -296,59 +288,3 @@ GAMrur2 = gam(warea ~ s(SA, bs = 're') + s(yearf, bs = 're'),
 #AIC(GAMrur1, GAMrur2, GAMrur3)
 
 ```
-
-## GAM Season Ordered
-Season is analyzed as an ordered variable adapting method of Simpson (2014).
-
-#References
-
-Simpson, G.A. Modelling seasonal data with GAMs. Blog: From the bottom of the heap. https://fromthebottomoftheheap.net/2014/05/09/modelling-seasonal-data-with-gam/
-
-```{r GAM, echo=FALSE}
-
-BMTR_sUDs_areas <- read.csv(paste0(here("adeHRoutput_noclip","Seasons"),"/Agg_UD_areasWI.csv"),	stringsAsFactors=FALSE,	na.strings="NA")
-
-##Proceeding through exploratory examples from Zuur et al. (2009):
-
-dotchart(BMTR_sUDs_areas$area, groups= factor(BMTR_sUDs_areas$SA), pch = BMTR_sUDs_areas$SA, ylab = "Study Area", xlab = "Area", main = "Cleveland dotplot")
-
-BMTR_sUDs_areas$SA <- as.factor(BMTR_sUDs_areas$SA)
-BMTR_sUDs_areas$season <- as.factor(BMTR_sUDs_areas$season)
-BMTR_sUDs_areas$warea <- BMTR_sUDs_areas$area / BMTR_sUDs_areas$nb.reloc
-BMTR_sUDs_areas$yearf <- as.factor(BMTR_sUDs_areas$year)
-pairs(BMTR_sUDs_areas)
-
-source(paste0(here(),"/HighstatLibV10.R"))
-
-M1 <- lm(warea ~ year, subset = (BMTR_sUDs_areas$SA == "BM"), data = BMTR_sUDs_areas)
-op <- par(mfrow = c(2,2))
-plot(M1, add.smooth = FALSE)
-par(op)
-
-M2 <- lm(warea ~ year, subset = (BMTR_sUDs_areas$SA == "TR"), data = BMTR_sUDs_areas)
-op <- par(mfrow = c(2,2))
-plot(M2, add.smooth = FALSE)
-par(op)
-
-## Non-linear. There is Cooks distance beyond the threshold value of 1 (see Zuur et al. 2009) - needs to be managed. Item 33 in TR is highly problematic - will remove this one:
-
-BMTR_sUDs_areasr <- BMTR_sUDs_areas[c(1:32,34:133),]
-
-TR_sUDs_areasWIr <- BMTR_sUDs_areasr[which(BMTR_sUDs_areasr$SA == "TR" & BMTR_sUDs_areasr$season == "WI"),]
-BM_sUDs_areasWIr <- BMTR_sUDs_areasr[which(BMTR_sUDs_areasr$SA == "BM" & BMTR_sUDs_areasr$season == "WI"),]
-
-
-mean(TR_sUDs_areasWIr$area)
-mean(TR_sUDs_areasWIr$warea)
-mean(BM_sUDs_areasWIr$area)
-mean(BM_sUDs_areasWIr$warea)
-
-
-BMTR_sUDs_WIr <- BMTR_sUDs_areasr[which(BMTR_sUDs_areasr$season == "WI"),]
-BMTR_sUDs_CAr <- BMTR_sUDs_areasr[which(BMTR_sUDs_areasr$season == "CA"),]
-BMTR_sUDs_SUr <- BMTR_sUDs_areasr[which(BMTR_sUDs_areasr$season == "SU"),]
-BMTR_sUDs_RUr <- BMTR_sUDs_areasr[which(BMTR_sUDs_areasr$season == "RU"),]
-
-
-```
-

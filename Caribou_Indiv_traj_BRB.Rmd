@@ -45,6 +45,26 @@ library(terra)
 
 ```
 
+############################################
+Settings
+
+```{r Project_Settings, results = "hide"}
+
+#############################################################################
+x = "E" # Easting
+y = "N" # Northing
+## See depreciated: https://inbo.github.io/tutorials/tutorials/spatial_crs_coding/
+crs.proj <- CRS(SRS_string = "EPSG:26910") # For raster formatting
+input.projection = "+init=epsg:26910" # For SpatialDataFrame formatting
+Datecolumn= "Date"
+Timecolumn= "Time"
+timezone = "GMT"
+loc.output <- paste0("adeHRoutput/")
+#############################################################################
+
+```
+
+
 ## adehabitatLT
 
 Movement trajectories
@@ -52,41 +72,18 @@ Movement trajectories
 ```{r echo=FALSE}
 
 ##Caribou_Quintette2 <- read.csv(paste0(here("Input Data"), "/Caribou_July2022.csv"), stringsAsFactors = FALSE) # Old
-Caribou_Quintette <- read.csv(paste0(here("Input Data"), "/Caribou_noclip.csv"))
-## Adjusting order to fit with the original data that was used to build this script after data updates provided by SM in Aug 2022.
-#Caribou_Quintette$year <- format.Date(Caribou_Quintette$timestamp, format = "%Y")
+Caribou_BMTR <- read.csv(paste0(here("Input Data"), "/Caribou_noclip.csv"))
 
-#Caribou_Quintette <- Caribou_Quintette[,c(1:3,5,7:8,4,10,9)]
-names(Caribou_Quintette)[names(Caribou_Quintette) == "Season2"] <- "season"
-
-## There was a mistake with Calvin and Calving, fixed:
-Caribou_Quintette[which(Caribou_Quintette$season == "Calvin"),4] <- "Calving"
-
-assign_seasonYR <- function(d) {
-  ifelse(format(as.Date(d, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),"%m") == "11" & format(as.Date(d, format =  "%Y-%m-%d %H:%M:%S", tz = "GMT"),"%d") >= "1", as.numeric(format(as.Date(d, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),"%Y"))+1,
-  ifelse(format(as.Date(d, format =  "%Y-%m-%d %H:%M:%S", tz = "GMT"),"%m") == "12" & format(as.Date(d, format =  "%Y-%m-%d %H:%M:%S", tz = "GMT"),"%d") <= "31", as.numeric(format(as.Date(d, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),"%Y")), as.numeric(format(as.Date(d, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),"%Y"))))
-}
-
-## If the winter season is Nov 1 to Dec 31, then it is the year+1 winter season.
-Caribou_Quintette$YearSeas = sapply(Caribou_Quintette$timestamp, assign_seasonYR)
-
-Caribou_Quintette$WIdate <- paste0(Caribou_Quintette$YearSeas,substr(as.character(Caribou_Quintette$timestamp),5,10)," ",substr(as.character(Caribou_Quintette$timestamp),12,19))
-Caribou_Quintette$WIdate <- as.POSIXct(Caribou_Quintette$WIdate, format = "%Y-%m-%d %H:%M:%S", tz = "GMT")
-
-Caribou_Quintette$SA[Caribou_Quintette$SA == "BM"] <- "CCBS"
-Caribou_Quintette$SA[Caribou_Quintette$SA == "TR"] <- "BKRQ"
-
-Caribou_BM <- Caribou_Quintette[which(Caribou_Quintette$SA == "CCBS"),]
-Caribou_TR <- Caribou_Quintette[which(Caribou_Quintette$SA == "BKRQ"),]
+Caribou_BM <- Caribou_BMTR[which(Caribou_BMTR$SA == "BM"),]
+Caribou_TR <- Caribou_BMTR[which(Caribou_BMTR$SA == "TR"),]
 
 # Create a dataframe to hold all of the contents of Caribout.ltraj with a column for id. 
 # Put first element into the dataframe
 
-## use Caribou_BM$timestamp for actual date, or Caribou_BM$WIdate to set early winter with year+1
+## Bullmoose trajectories
 CaribouBM.ltraj <- as.ltraj(xy = Caribou_BM[,c("E", "N")], 
-                       date =  as.POSIXct(Caribou_BM$WIdate, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
+                       date =  as.POSIXct(Caribou_BM$timestamp, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
                        id = Caribou_BM$AnimalID, typeII = TRUE)
-
 
 total.path.df <- data.frame(CaribouBM.ltraj[[1]], id = attr(CaribouBM.ltraj[[1]], "id"))
 
@@ -103,7 +100,7 @@ total.path.df$distperday <- total.path.df$dist / (total.path.df$dt/60/60/24)
 path.summary <- aggregate(distperday~id, data = total.path.df, FUN = mean)
 path.summary$sd <- aggregate(distperday~id, data = total.path.df, FUN = sd)$distperday
 
-# Look at summmary dataframe
+# Look at summary dataframe
 path.summary
 
 
@@ -124,13 +121,10 @@ BM_path.plot <- ggplot(data = path.summary, aes(x = id, y = distperday, colour =
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) 
 
 
-#BM_path.plot # call plot
-
-## Trend Roman
-## use Caribou_TR$timestamp for actual date, or Caribou_TR$WIdate to set early winter with year+1
+## Trend Roman trajectory
 
 CaribouTR.ltraj <- as.ltraj(xy = Caribou_TR[,c("E", "N")], 
-                       date =  as.POSIXct(Caribou_TR$WIdate, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
+                       date =  as.POSIXct(Caribou_TR$timestamp, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
                        id = Caribou_TR$AnimalID, typeII = TRUE)
 
 
@@ -180,14 +174,14 @@ TR_path.plot <- ggplot(data = TRpath.summary, aes(x = id, y = distperday, colour
 
 ## Four season model - 1. EW, MW, LW winter as one, 2. calving, 3. summer, and 4. rutting
 ## Organize winter as one:
-Caribou_BM_WI <- Caribou_BM[which(Caribou_BM$season == "Winter"),]
-Caribou_BM_CA <- Caribou_BM[which(Caribou_BM$season == "Calving"),]
-Caribou_BM_SU <- Caribou_BM[which(Caribou_BM$season == "Summer"),]
-Caribou_BM_RU <- Caribou_BM[which(Caribou_BM$season == "Rut"),]
-Caribou_TR_WI <- Caribou_TR[which(Caribou_TR$season == "Winter"),]
-Caribou_TR_CA <- Caribou_TR[which(Caribou_TR$season == "Calving"),]
-Caribou_TR_SU <- Caribou_TR[which(Caribou_TR$season == "Summer"),]
-Caribou_TR_RU <- Caribou_TR[which(Caribou_TR$season == "Rut"),]
+Caribou_BM_WI <- Caribou_BM[which(Caribou_BM$season == "EW" | Caribou_BM$season == "MW" | Caribou_BM$season == "LW"),]
+Caribou_BM_CA <- Caribou_BM[which(Caribou_BM$season == "CA"),]
+Caribou_BM_SU <- Caribou_BM[which(Caribou_BM$season == "SU"),]
+Caribou_BM_RU <- Caribou_BM[which(Caribou_BM$season == "RU"),]
+Caribou_TR_WI <- Caribou_TR[which(Caribou_TR$season == "EW" | Caribou_TR$season == "MW" | Caribou_TR$season == "LW"),]
+Caribou_TR_CA <- Caribou_TR[which(Caribou_TR$season == "CA"),]
+Caribou_TR_SU <- Caribou_TR[which(Caribou_TR$season == "SU"),]
+Caribou_TR_RU <- Caribou_TR[which(Caribou_TR$season == "RU"),]
 
 years <- unique(Caribou_Quintette$YearSeas)
 
@@ -264,16 +258,6 @@ for(y in 1:length(years)){
 
 Caribou_BM_SU_LI[sapply(Caribou_BM_SU_LI,function(x) all(is.na(x)))] <- NULL
 
-## This was a check that the summer dates stayed the same after the winter seasonal correction was made (e.g., Nov-Dec = %Y+1 to fit in Jan-Apr %Y) - test = TRUE, so it is good.
-#Caribou_BM_SU_LI <- lapply(Caribou_BM_SU_LI, function(x) {
-#      x[,5] <- as.POSIXct(as.Date(x[,5]))
-#      x })
-#
-#test <- lapply(Caribou_BM_SU_LI, function(x) {
-#      x <- x[,5] == x[,5]
-#      x })
-
-
 ## Bullmoose Rutting
 Caribou_BM_RU_LI <- list()
 tally = 1
@@ -300,7 +284,7 @@ Caribou_BM_RU_LI[sapply(Caribou_BM_RU_LI,function(x) all(is.na(x)))] <- NULL
 
 ## Individual Bullmoose trajectories: by year and by season
 CaribouBM.ltraj <- as.ltraj(xy = Caribou_BM[,c("E", "N")], 
-                       date =  as.POSIXct(Caribou_BM$WIdate, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
+                       date =  as.POSIXct(Caribou_BM$timestamp, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
                        id = Caribou_BM$AnimalID, typeII = TRUE)
 
 ##Winter
@@ -440,7 +424,7 @@ Caribou_TR_RU_LI[sapply(Caribou_TR_RU_LI,function(x) all(is.na(x)))] <- NULL
 
 ## Individual Roman trajectories: by year and by season
 CaribouTR.ltraj <- as.ltraj(xy = Caribou_TR[,c("E", "N")], 
-                       date =  as.POSIXct(Caribou_TR$WIdate, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
+                       date =  as.POSIXct(Caribou_TR$timestamp, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
                        id = Caribou_TR$AnimalID, typeII = TRUE)
 
 ##Winter
@@ -536,8 +520,8 @@ DLik <- BRB.likD(CaribouTR.ltraj, Tmax=1500*60, Lmin=2) #Lmin is the minimum dis
 
 Dest <- as.data.frame(lapply(DLik, function (x) mean(x[,2],  na.rm= TRUE)))
 ## 28 variables - remove the last QU_
-mean(as.numeric(Dest[,c(1:27)]))
-## [1] 8.246513
+mean(as.numeric(Dest[,c(1:length(Dest))]))
+## [1] 12.09631
 
 ##Caribou BRB Trend Roman - example for one burst Car014 using an average diffusion coefficient
 udx <- BRB(CaribouTR.ltraj[1], D = 8.25, Tmax = 1500*60, Lmin = 2, hmin = 20, type = "UD", grid = 4000)
