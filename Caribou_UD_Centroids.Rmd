@@ -6,47 +6,48 @@ output: html_document
 
 ```{r setup, include=FALSE}
 
-if(!require(adehabitatLT)){install.packages("adehabitatLT")}
-if(!require(adehabitatHR)){install.packages("adehabitatHR")}
-if(!require(stringr)){install.packages("stringr")}
-if(!require(rgdal)){install.packages("rgdal")}
-if(!require(here)){install.packages("here")}
-if(!require(terra)){install.packages("terra")}
-if(!require(stampr)){install.packages("stampr")}
-if(!require(sp)){install.packages("sp")}
-if(!require(sf)){install.packages("sf")}
-if(!require(tmap)){install.packages("tmap")}
-if(!require(viridisLite)){install.packages("viridisLite")}
-if(!require(quickPlot)){install.packages("quickPlot")}
-if(!require(ggplot2)){install.packages("ggplot2")}
-if(!require(gdistance)){install.packages("gdistance")}
-if(!require(geosphere)){install.packages("geosphere")}
-if(!require(dplyr)){install.packages("dplyr")}
-if(!require(FSA)){install.packages("FSA")}
-if(!require(movecost)){install.packages("movecost")}
-if(!require(patchwork)){install.packages("patchwork")}
+##################################################################
 
-library(adehabitatLT)
-library(adehabitatHR)
-library(stringr)
-library(rgdal)
-library(here)
-library(terra)
-library(stampr)
-library(sp)
-library(sf)
-library(tmap)
-library(viridisLite)
-library(quickPlot)
-library(ggplot2)
-library(gdistance)
-library(geosphere)
-library(dplyr)
-library(FSA)
-library(movecost)
-library(patchwork)
+#	Load	required	packages
 
+#automatic install of packages if they are not installed already
+list.of.packages <- c(
+"adehabitatLT",
+"adehabitatHR",
+"stringr",
+"rgdal",
+"here",
+"terra",
+"stampr",
+"sp",
+"sf",
+"tmap",
+"viridisLite",
+"quickPlot",
+"ggplot2",
+"gdistance",
+"geosphere",
+"dplyr",
+"FSA",
+"movecost",
+"patchwork"
+)
 
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+
+if(length(new.packages) > 0){
+  install.packages(new.packages, dep=TRUE)
+}
+
+#loading packages
+for(package.i in list.of.packages){
+  suppressPackageStartupMessages(
+    library(
+      package.i, 
+      character.only = TRUE
+      )
+    )
+}
 
 ```
 
@@ -86,12 +87,7 @@ TRRU <- seasonsUD[grepl("TR", names(seasonsUD)) & grepl("RU", names(seasonsUD))]
 
 ```
 
-# Movements visualized
-
-Employ the "stampr" package to plot and track the movement of the seasonal UD polygons. It works only in pairs of time1 to time2, so this organizes pairs into a time by movement sequence.
-
-see: https://cran.r-project.org/web/packages/stampr/stampr.pdf
-     https://www.jstatsoft.org/article/download/v084c01/1214 
+# Season assignments
 
 ```{r , echo=FALSE}
 
@@ -115,70 +111,10 @@ BM_sUDsn <- c("BMWI", "BMCA", "BMSU", "BMRU")
 TR_sUDs <- list(TRWI, TRCA, TRSU, TRRU)
 TR_sUDsn <- c("TRWI", "TRCA", "TRSU", "TRRU")
 
-## Stampr package. This works for some of the UD polygon comparisons.
-## These loops were working, but it requires troubleshooting.
-## However, you can look at individual cases (e.g., n = 2 in BM works).
-## Retained for future exploratory study of UD movements.
-
-BM_chSum <- list()
-BM_chname <- list()
-lc = 1
-
-for(n in 1:length(BM_sUDs)){
-  for(y in 1:length(BM_sUDs[[n]])){
-    if(y < length(BM_sUDs[[n]])-1){
-      x1 <- BM_sUDs[[n]][[y]]
-      x2 <- BM_sUDs[[n]][[y+1]]
-      x1$ID <-1
-      x2$ID <-2
-      x1 <- sf::st_as_sf(x1)
-      x2 <- sf::st_as_sf(x2)
-      x1 <- x1[,c(1,4,3)]
-      x2 <- x2[,c(1,4,3)]
-      BM_chSum[[lc]] <- assign(paste0(BM_sUDsn[n],"_",substr(names(BM_sUDs[[n]][y]), 8, 11)),stampr::stamp(x1, x2, direction = FALSE, distance = FALSE, shape=FALSE))
-      BM_chname[lc] <- paste0(BM_sUDsn[n],"_",substr(names(BM_sUDs[[n]][y]), 8, 11))
-      lc = lc+1}else{next()}
-  }
-}
-
-BM_chSum_df <- unlist(BM_chSum)
-names(BM_chSum_df) <- unlist(BM_chname)
-
-TR_chSum <- list()
-TR_chname <- list()
-lc = 1
-
-for(n in 1:length(TR_sUDs)){
-  for(y in 1:length(TR_sUDs[[n]])){
-    if(y < length(TR_sUDs[[n]])-1){
-      x1 <- TR_sUDs[[n]][[y]]
-      x2 <- TR_sUDs[[n]][[y+1]]
-      x1$ID <- as.integer(1)
-      x2$ID <- as.integer(2)
-      x1 <- st_as_sf(x1, crs = 4269)
-      x1 <- st_cast(x1, "MULTIPOLYGON") %>% st_cast("POLYGON")
-      x2 <- st_as_sf(x2, crs = 4269)
-      x2 <- st_cast(x2, "MULTIPOLYGON") %>% st_cast("POLYGON")
-      x1 <- x1[,c(1,4,3)]
-      x2 <- x2[,c(1,4,3)]
-      TR_chSum[[lc]] <- assign(paste0(TR_sUDsn[n],"_",substr(names(TR_sUDs[[n]][y]), 8, 11)),stampr::stamp(x1, x2,direction = TRUE, distance = TRUE))
-      TR_chname[lc] <- paste0(TR_sUDsn[n],"_",substr(names(TR_sUDs[[n]][y]), 8, 11))
-      lc = lc+1}else{next()}
-  }
-}
-
-TR_chSum_df <- unlist(TR_chSum)
-names(TR_chSum_df) <- unlist(TR_chname)
-TR_chSum2 <- as.list(TR_chSum_df)
-
-cx <- stamp.group.summary(TR_chSum2[[1]])
-stamp.map(TR_chSum2[[1]], by = "LEV1", main=names(TR_chSum2[1]))
-
-
 ```
 
 
-Plotting
+# Shapefile Imports and Plot Prep
 
 ```{r , echo=FALSE}
 BM_sUDsn <- c("BMWI", "BMCA", "BMSU", "BMRU")

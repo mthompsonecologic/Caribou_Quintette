@@ -19,42 +19,44 @@ Long, J., Robertson, C., Nelson, T. 2018. stampr: Spatial-Temporal Analysis of M
 
 ##################################################################
 
-install.packages("sp")
-install.packages("sf")
-install.packages("rgdal")
-install.packages("stampr")
-install.packages("ggplot2")
-install.packages("scales")
-install.packages("here")
-install.packages("quickPlot")
-install.packages("maptools")
-install.packages("geosphere")
-install.packages("viridisLite")
-install.packages("ggspatial")
-install.packages("terra")
-install.packages("tmap")
-install.packages("imager")
-install.packages("ragg")
-install.packages("ggrepel")
+#	Load	required	packages
 
-# Libraries -------------------------------------------------------------------------
-library(sp)
-library(sf)
-library(rgdal)
-library(stampr)
-library(ggplot2)
-library(scales)
-library(here)
-library(quickPlot)
-library(maptools)
-library(geosphere)
-library(viridisLite)
-library(ggspatial)
-library(terra)
-library(tmap)
-library(imager)
-library(ragg)
-library(ggrepel)
+#automatic install of packages if they are not installed already
+list.of.packages <- c(
+ "sp",
+ "sf",
+ "rgdal",
+ "stampr",
+ "ggplot2",
+ "scales",
+ "here",
+ "quickPlot",
+ "maptools",
+ "geosphere",
+ "viridisLite",
+ "ggspatial",
+ "terra",
+ "tmap",
+ "imager",
+ "ragg",
+ "ggrepel"
+)
+
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+
+if(length(new.packages) > 0){
+  install.packages(new.packages, dep=TRUE)
+}
+
+#loading packages
+for(package.i in list.of.packages){
+  suppressPackageStartupMessages(
+    library(
+      package.i, 
+      character.only = TRUE
+      )
+    )
+}
 
 
 ```

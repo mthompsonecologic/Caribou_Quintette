@@ -27,6 +27,8 @@ This RMarkdown is designed to:
 
 ```{r echo=FALSE}
 
+###############################################
+
 #	Load	required	packages
 
 #automatic install of packages if they are not installed already
@@ -617,7 +619,6 @@ for(i in 1:length(DLik_BM_WI_u)){
     next()}
   }
 }
-
 
 #create the cluster
 n.cores <- parallel::detectCores() - 1

@@ -34,89 +34,59 @@ Proceed according to the following:
 
 ##################################################################
 
-if(!require(sp)){install.packages("sp")}
-if(!require(lubridate)){install.packages("lubridate")}
-if(!require(rgdal)){install.packages("rgdal")}
-if(!require(maptools)){install.packages("maptools")}
-if(!require(adehabitatHR)){install.packages("adehabitatHR")}
-if(!require(raster)){install.packages("raster")}
-if(!require(terra)){install.packages("terra")}
-if(!require(lunar)){install.packages("lunar")}
-if(!require(oce)){install.packages("oce")}
-if(!require(summarytools)){install.packages("summarytools")}
-if(!require(move)){install.packages("move")}
-if(!require(ggplot2)){install.packages("ggplot2")}
-if(!require(sf)){install.packages("sf")}
-if(!require(rgeos)){install.packages("rgeos")}
-if(!require(stringr)){install.packages("stringr")}
-if(!require(dismo)){install.packages("dismo")}
-if(!require(ggmap)){install.packages("ggmap")}
-if(!require(mapproj)){install.packages("mapproj")}
-if(!require(maptools)){install.packages("maptools")}
-if(!require(here)){install.packages("here")}
-if(!require(rcompanion)){install.packages("rcompanion")}
-if(!require(gridExtra)){install.packages("gridExtra")}
-if(!require(RColorBrewer)){install.packages("RColorBrewer")}
-if(!require(furniture)){install.packages("furniture")}
-if(!require(gtable)){install.packages("gtable")}
-if(!require(foreach)){install.packages("foreach")}
-if(!require(doParallel)){install.packages("doParallel")}
-if(!require(doSNOW)){install.packages("doSNOW")}
-
-```
-
-Package and library installs were broken down for use in the Acenet high-performance computing environment. Change eval condition as needed.
-
-```{r Acenet_package, eval=FALSE}
-# For Acenet:
-install.packages(c("sp", "terra","rgdal","lubridate","maptools","adehabitatHR","raster","lunar","oce","summarytools","move","#ggplot2","sf","rgeos","stringr","dismo","ggmap","mapproj","maptools","here","rcompanion","gr#idExtra","RColorBrewer","furniture","gtable","foreach","doParallel"))
-
-```
-
-
-```{r Libraries}
-# Libraries -------------------------------------------------------------------------
-library(raster)
-library(terra)
-library(ggplot2)
-library(rgdal)
-library(sp)
-library(sf)
-library(move)
-library(adehabitatHR)
-library(rgeos)
-library(stringr)
-library(dismo)
-library(maptools)
-library(lubridate)
-library(rgdal)
-library(lunar)
-library(oce)
-library(summarytools)
-library(here)
-library(rcompanion)
-library(gridExtra)
-library(RColorBrewer)
-library(furniture)
-library(gtable)
-library(foreach)
-library(doParallel)
-library(doSNOW)
-
 #	Load	required	packages
-require(sp)
-require(lubridate)
-require(rgdal)
-require(sf)
-require(stringr)
 
-###################################################################
+#automatic install of packages if they are not installed already
+list.of.packages <- c(
+"sp",
+"lubridate",
+"rgdal",
+"maptools",
+"adehabitatHR",
+"raster",
+"terra",
+"lunar",
+"oce",
+"summarytools",
+"move",
+"ggplot2",
+"sf",
+"rgeos",
+"stringr",
+"dismo",
+"ggmap",
+"mapproj",
+"maptools",
+"here",
+"rcompanion",
+"gridExtra",
+"RColorBrewer",
+"furniture",
+"gtable",
+"foreach",
+"doParallel",
+"doSNOW"
+)
+
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+
+if(length(new.packages) > 0){
+  install.packages(new.packages, dep=TRUE)
+}
+
+#loading packages
+for(package.i in list.of.packages){
+  suppressPackageStartupMessages(
+    library(
+      package.i, 
+      character.only = TRUE
+      )
+    )
+}
 
 ```
 
 ############################################
-
-
 
 ```{r Project_Settings, results = "hide"}
 
@@ -193,6 +163,7 @@ Caribou <- rbind(Caribou, Caribou_gap)
 #Caribou <- Caribou[Caribou$timestamp >='2007-11-26 00:00:00',] ## Or skip to table hits by year
 
 ```
+
 # Updates
 
 On Aug 11, 2022 - Scott McNay sent a new excel file ("qttelemfinal6.csv") with updates to the telemetry data. This processes the updates into the existing script.

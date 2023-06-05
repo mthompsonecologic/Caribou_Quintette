@@ -13,22 +13,35 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r echo=FALSE}
 
-if(!require(here)){install.packages("here")}
-if(!require(mgcv)){install.packages("mgcv")}
-if(!require(gratia)){install.packages("gratia")}
-if(!require(bbmle)){install.packages("bbmle")}
-if(!require(lme4)){install.packages("lme4")}
-if(!require(lme4)){install.packages("nlme")}
+###############################################
 
+#	Load	required	packages
 
-library(here)
-library(mgcv)
-library(gratia)
-library(bbmle) 
-library(lme4)
-library(nlme)
+#automatic install of packages if they are not installed already
+list.of.packages <- c(
+ "here",
+ "mgcv",
+ "gratia",
+ "bbmle",
+ "lme4",
+ "nlme"
+  )
 
-require("nlme")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+
+if(length(new.packages) > 0){
+  install.packages(new.packages, dep=TRUE)
+}
+
+#loading packages
+for(package.i in list.of.packages){
+  suppressPackageStartupMessages(
+    library(
+      package.i, 
+      character.only = TRUE
+      )
+    )
+}
 
 ```
 

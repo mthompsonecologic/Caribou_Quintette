@@ -12,47 +12,50 @@ knitr::opts_chunk$set(echo = TRUE)
 ## Package loads
 
 
-```{r, echo = FALSE, include=FALSE}
+```{r setup, echo = FALSE, include=FALSE}
 
-if(!require(adehabitatLT)){install.packages("adehabitatLT")}
-if(!require(adehabitatHR)){install.packages("adehabitatHR")}
-if(!require(stringr)){install.packages("stringr")}
-if(!require(rgdal)){install.packages("rgdal")}
-if(!require(here)){install.packages("here")}
-if(!require(terra)){install.packages("terra")}
-if(!require(stampr)){install.packages("stampr")}
-if(!require(sp)){install.packages("sp")}
-if(!require(sf)){install.packages("sf")}
-if(!require(tmap)){install.packages("tmap")}
-if(!require(viridisLite)){install.packages("viridisLite")}
-if(!require(quickPlot)){install.packages("quickPlot")}
-if(!require(ggplot2)){install.packages("ggplot2")}
-if(!require(gdistance)){install.packages("gdistance")}
-if(!require(geosphere)){install.packages("geosphere")}
-if(!require(dplyr)){install.packages("dplyr")}
-if(!require(FSA)){install.packages("FSA")}
-if(!require(movecost)){install.packages("movecost")}
-if(!require(patchwork)){install.packages("patchwork")}
+##################################################################
 
-library(adehabitatLT)
-library(adehabitatHR)
-library(stringr)
-library(rgdal)
-library(here)
-library(terra)
-library(stampr)
-library(sp)
-library(sf)
-library(tmap)
-library(viridisLite)
-library(quickPlot)
-library(ggplot2)
-library(gdistance)
-library(geosphere)
-library(dplyr)
-library(FSA)
-library(movecost)
-library(patchwork)
+#	Load	required	packages
+
+#automatic install of packages if they are not installed already
+list.of.packages <- c(
+"adehabitatLT",
+"adehabitatHR",
+"stringr",
+"rgdal",
+"here",
+"terra",
+"stampr",
+"sp",
+"sf",
+"tmap",
+"viridisLite",
+"quickPlot",
+"ggplot2",
+"gdistance",
+"geosphere",
+"dplyr",
+"FSA",
+"movecost",
+"patchwork"
+)
+
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+
+if(length(new.packages) > 0){
+  install.packages(new.packages, dep=TRUE)
+}
+
+#loading packages
+for(package.i in list.of.packages){
+  suppressPackageStartupMessages(
+    library(
+      package.i, 
+      character.only = TRUE
+      )
+    )
+}
 ```
 
 ## Individual centroids
@@ -62,8 +65,23 @@ This code chunk calculates the centriod of the BRB homerange estimation for each
 ```{r , echo=FALSE, include = FALSE, message = FALSE, warning = FALSE, results = 'hide', fig.show = 'hide'}
 
 #Bullmoose
-BM_WI_BRBs <- list()
 Ind_BRB_UDdir <- gsub(".shp", "",dir(here("BRB_UDs"), pattern="^(BM_WI).{1,}(shp)"))
+
+
+## Load and parse the seasonal data:
+ff <- list.files(here("BRB_UDs"),
+                 pattern="^(BM_WI).{1,}(shp)",
+                 full.names=TRUE)
+
+seasonalf <- lapply(ff, shapefile)
+names(seasonalf) <- list.files(here("BRB_UDs"),
+                               pattern="^(BM_WI).{1,}(shp)",
+                               full.names=FALSE)
+
+names(seasonalf) <- substr(names(seasonalf),
+                           1,
+                           nchar(names(seasonalf[1]))-4
+                           ) # Reduce end of string
 
 
 for(i in 1:length(Ind_BRB_UDdir)){
