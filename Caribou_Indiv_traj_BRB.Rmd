@@ -26,22 +26,37 @@ This RMarkdown script is designed to:
 “In the absence of standardized procedure, one may consider that the serial correlation is sufficiently high when the median distance between successive relocations is much (e.g. 10 times) smaller than the HR diameter. If it is necessary to keep one relocation every n to obtain a low serial correlation, the Tmax value can be set to n–1 times the recording time interval (assuming that data were acquired with a constant recording time interval)”. https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0014592#abstract0 
 
 ```{r echo=FALSE}
-if(!require(adehabitatLT)){install.packages("adehabitatLT")}
-if(!require(adehabitatHR)){install.packages("adehabitatHR")}
-if(!require(stringr)){install.packages("stringr")}
-if(!require(ks)){install.packages("ks")}
-if(!require(rgdal)){install.packages("rgdal")}
-if(!require(here)){install.packages("here")}
-if(!require(terra)){install.packages("terra")}
 
-library(adehabitatLT)
-library(adehabitatHR)
-library(stringr)
-library(ks)
-library(rgdal)
-library(here)
-library(terra)
+#	Load	required	packages
 
+#automatic install of packages if they are not installed already
+list.of.packages <- c(
+  "foreach",
+  "doParallel",
+  "here",
+  "adehabitatLT",
+  "adehabitatHR",
+  "stringr",
+  "ks",
+  "rgdal",
+  "terra"
+  )
+
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+
+if(length(new.packages) > 0){
+  install.packages(new.packages, dep=TRUE)
+}
+
+#loading packages
+for(package.i in list.of.packages){
+  suppressPackageStartupMessages(
+    library(
+      package.i, 
+      character.only = TRUE
+      )
+    )
+}
 
 ```
 
@@ -183,7 +198,7 @@ Caribou_TR_CA <- Caribou_TR[which(Caribou_TR$season == "CA"),]
 Caribou_TR_SU <- Caribou_TR[which(Caribou_TR$season == "SU"),]
 Caribou_TR_RU <- Caribou_TR[which(Caribou_TR$season == "RU"),]
 
-years <- unique(Caribou_Quintette$YearSeas)
+years <- unique(Caribou_BMTR$YearSeas)
 
 ## Bullmoose winter
 Caribou_BM_WI_LI <- list()
@@ -580,8 +595,58 @@ for(t in 1:length(BM_WI_Traj)){
   DLik_BM_WI[[tally]] <- BRB.likD(BM_WI_Traj[[t]], Tmax=1500*60, Lmin=2,  Dr=c(2,7))
   tally = tally + 1
 }
+names(DLik_BM_WI) <- names(BM_WI_Traj)
+
 ## DLik_...computes a list of each animal n = observations during the time interval [0,Ttotal], and D- diffusion parameter. See: Horne, J.S., Garton, E.O., Krone, S.M. and Lewis, J.S. 2007. Analyzing animal movements using Brownian bridges. Ecology, 88, 2354–235
 ## These are contained in a list by year
+
+DLik_BM_WI_u <- unlist(DLik_BM_WI)
+DLik_BM_WI_u <- DLik_BM_WI_u[1:(length(DLik_BM_WI_u)/2)*2]
+DLik_BM_WI_u <- as.numeric(as.vector(DLik_BM_WI_u))
+
+Traj_len <- as.numeric(as.vector(lengths(BM_WI_Traj)))
+
+Traj_li <- list()
+
+for(i in 1:length(DLik_BM_WI_u)){
+  for(y in 1:length(Traj_len)){
+    if(a <= Traj_len[y]){
+      Traj_li[[i]] <- BM_WI_Traj[[y]][a]
+      a = a+1
+    }else{a = 1
+    next()}
+  }
+}
+
+
+#create the cluster
+n.cores <- parallel::detectCores() - 1
+my.cluster <- parallel::makeCluster(
+  n.cores, 
+  type = "PSOCK"
+  )
+
+#register it to be used by %dopar%
+doParallel::registerDoParallel(cl = my.cluster)
+
+#register it to be used by %dopar%
+doParallel::registerDoParallel(cl = my.cluster)
+BRBs_BM_WI <- foreach(i = 1:length(Traj_li),
+                      .combine = c,
+                      .packages = c("adehabitatHR","adehabitatLT")) %dopar% {
+                          BRB(Traj_li[[i]][1],
+                          D = DLik_BM_WI_u[i],
+                          Tmax = 1500*60,
+                          Lmin = 2,
+                          hmin = 20,
+                          type = "UD",
+                          grid = 4000)
+                          
+                      }
+
+# Stop the parallel backend
+stopCluster(my.cluster)
+
 
 ## Obtain the D estimates per individual from the DLik lists and incorporate into the BRB UD models:
 BRBs_BM_WI <- list()
