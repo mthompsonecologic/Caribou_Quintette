@@ -609,6 +609,7 @@ DLik_BM_WI_u <- as.numeric(as.vector(DLik_BM_WI_u))
 Traj_len <- as.numeric(as.vector(lengths(BM_WI_Traj)))
 
 Traj_li <- list()
+a = 1
 
 for(i in 1:length(DLik_BM_WI_u)){
   for(y in 1:length(Traj_len)){
@@ -619,6 +620,14 @@ for(i in 1:length(DLik_BM_WI_u)){
     next()}
   }
 }
+
+# Note to understand resultant data structure:
+sum(lengths(DLik_BM_WI))
+#[1] 150
+sum(Traj_len)
+#[1] 150
+
+# BRB calculation
 
 #create the cluster
 n.cores <- parallel::detectCores() - 1
@@ -642,11 +651,58 @@ BRBs_BM_WI <- foreach(i = 1:length(Traj_li),
                           hmin = 20,
                           type = "UD",
                           grid = 4000)
-                          
                       }
 
 # Stop the parallel backend
 stopCluster(my.cluster)
+
+# BRB metrics
+
+#create the cluster
+#Reduce the number of cores to save mem.
+# See: https://stackoverflow.com/questions/28503208/doparallel-error-in-r-error-in-serializedata-nodecon-error-writing-to-con
+n.cores <- parallel::detectCores() - 1
+my.cluster <- parallel::makeCluster(
+  n.cores, 
+  type = "PSOCK"
+  )
+
+#register it to be used by %dopar%
+doParallel::registerDoParallel(cl = my.cluster)
+
+## vud has to be run on ACENET. Memory requirements too high.
+vud <- foreach(i = 1:length(BRBs_BM_WI),
+                      .combine = c,
+                      .packages = c("adehabitatHR","adehabitatLT")) %dopar% {
+                      getvolumeUD(BRBs_BM_WI[[i]])    
+                      }
+
+homerange <- foreach(i = 1:length(BRBs_BM_WI),
+                      .combine = c,
+                      .packages = c("adehabitatHR")) %dopar% {
+                      getverticeshr.estUD(BRBs_BM_WI[[i]])    
+                      }
+
+# Stop the parallel backend
+stopCluster(my.cluster)
+
+writeVector(homerange,paste0(here("BRB_UDs")),"/BM_WI_",substr(names(BM_WI_Traj[i]),7,11),"_",name_burst[[tally]], overwrite_layer=TRUE))
+
+BRB_area[tally,c(1:4)] <- rbind(data.frame(id = name_burst[[tally]], year = substr(names(BM_WI_Traj[i]),7,11), area = homerangedf[,2], nb.reloc = nrow(BM_WI_Traj[[i]][[x]])))
+
+
+   #vud <- getvolumeUD(BRBs_BM_WI[[tally]]) # gums up with memory - too many at once
+   homerange <- getverticeshr(BRBs_BM_WI[[tally]])
+   #homerange[[1]][1] = name_burst[[tally]] ## to set the name, but is is not needed.
+   homerangedf <- as.data.frame(homerange)
+   BRB_area[tally,c(1:4)] <- rbind(data.frame(id = name_burst[[tally]], year = substr(names(BM_WI_Traj[i]),7,11), area = homerangedf[,2], nb.reloc = nrow(BM_WI_Traj[[i]][[x]]))) ## Cheat +1 to set year, because there is no data in 2002. Fix later.
+   #jpeg(paste0(here("BRB_UDs"), "/BRB_", name_burst[[tally]], ".jpg", sep="")) # Gums up with memory - too many at once, so I just work with the shapefile.
+   writeOGR(homerange,file.path(here("BRB_UDs")),paste0("BM_WI_",substr(names(BM_WI_Traj[i]),7,11),"_",name_burst[[tally]]), driver="ESRI Shapefile", overwrite_layer=TRUE)
+   tally = tally + 1
+  }
+}
+
+write.csv(BRB_area, paste0(here("BRB_UDs"), "/BM_WI_BRB_areas.csv", sep=""), row.names = FALSE)
 
 
 ## Obtain the D estimates per individual from the DLik lists and incorporate into the BRB UD models:
