@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## R Markdown
 
-This RMarkdown script is designed to:
+This RMarkdown is designed to:
 
   1. Plot annual movement trajectories of individual caribou. Possibly assigning unique point or line factor assignments by color (e.g., EW = Brown, MW = Blue, LW = Grey, CA = green, etc.). This will be accomplished with adehabitatLT (see: https://jamesepaterson.github.io/jamespatersonblog/02_trackingworkshop_trajectories for simple examples).
   
