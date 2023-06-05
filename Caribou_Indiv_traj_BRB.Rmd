@@ -685,6 +685,10 @@ homerange <- foreach(i = 1:length(BRBs_BM_WI),
 
 # Stop the parallel backend
 stopCluster(my.cluster)
+```
+
+
+```{r, eval=FALSE}
 
 writeVector(homerange,paste0(here("BRB_UDs")),"/BM_WI_",substr(names(BM_WI_Traj[i]),7,11),"_",name_burst[[tally]], overwrite_layer=TRUE))
 
@@ -974,7 +978,7 @@ write.csv(BRB_area, paste0(here("BRB_UDs"), "/TR_RU_BRB_areas.csv", sep=""), row
 
 ## The BRB calculations sometimes require loop chunks as the computer runs out of memory. The code chunk below reads in the outputs, re-calculates the areas, and tables the details for all UDs - including the aggregate kernel-UDs.
 
-```{r echo=FALSE}
+```{r, echo=FALSE, eval=FALSE}
 
 
 ## Bullmoose WI Table
