@@ -686,11 +686,6 @@ vud <- foreach(i = 1:length(BRBs_BM_WI),
 # Stop the parallel backend
 stopCluster(my.cluster)
 
-# Save
-for(i in 1:length(vud)){
-  write.csv(vud[[i]], paste0(here("BRB_UDs"),"/",names(vud[i])))
-}
-
 #Area cluster
 n.cores <- parallel::detectCores() - 1
 my.cluster <- parallel::makeCluster(
