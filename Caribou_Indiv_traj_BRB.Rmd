@@ -713,6 +713,7 @@ stopCluster(my.cluster)
 # Save
 for(i in 1:length(homerange)){
   writeVector(vud[[i]], paste0(here("BRB_UDs"),"/",names(vud[i])))
+  writeVector(homerange[[i]], paste0(here("BRB_UDs"),"/",names(homerange[i])))
 }
 
 ```
