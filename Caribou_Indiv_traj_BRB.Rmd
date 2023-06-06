@@ -706,6 +706,7 @@ homerange <- foreach(i = 1:length(BRBs_BM_WI),
                       .packages = c("adehabitatHR")) %dopar% {
                       getverticeshr.estUD(BRBs_BM_WI[[i]])    
                       }
+
 # Stop the parallel backend
 stopCluster(my.cluster)
 
