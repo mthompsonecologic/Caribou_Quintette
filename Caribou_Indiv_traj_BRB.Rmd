@@ -41,7 +41,8 @@ list.of.packages <- c(
   "stringr",
   "ks",
   "rgdal",
-  "terra"
+  "terra",
+  "sf"
   )
 
 new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
@@ -532,7 +533,7 @@ Note: Glenn Sutherland provided some information on DOP method: ..."methods we u
 
 BRB home range analysis - Test Example
 
-```{r echo=FALSE}
+```{r eval=FALSE, echo=FALSE}
 DLik <- BRB.likD(CaribouTR.ltraj, Tmax=1500*60, Lmin=2) #Lmin is the minimum distance (in m) between successive relocations defining intensive use or resting. Note that Lmin has little effect on the estimate. It is reasonable to assume that caribou are resting within a 2 m distance.
 
 Dest <- as.data.frame(lapply(DLik, function (x) mean(x[,2],  na.rm= TRUE)))
@@ -656,6 +657,12 @@ BRBs_BM_WI <- foreach(i = 1:length(Traj_li),
 # Stop the parallel backend
 stopCluster(my.cluster)
 
+
+for(i in 1:length(BRBs_BM_WI)){
+  BRBs_BM_WIi[[i]] <-st_as_sf(BRBs_BM_WI[[i]])
+  st_write(BRBs_BM_WIi[[i]], paste0(here("BRB_UDs"), "/", names(BRBs_BM_WI[[i]])))
+}
+
 # BRB metrics
 
 #create the cluster
@@ -676,19 +683,41 @@ vud <- foreach(i = 1:length(BRBs_BM_WI),
                       .packages = c("adehabitatHR","adehabitatLT")) %dopar% {
                       getvolumeUD(BRBs_BM_WI[[i]])    
                       }
+# Stop the parallel backend
+stopCluster(my.cluster)
+
+# Save
+for(i in 1:length(vud)){
+  write.csv(vud[[i]], paste0(here("BRB_UDs"),"/",names(vud[i])))
+}
+
+#Area cluster
+n.cores <- parallel::detectCores() - 1
+my.cluster <- parallel::makeCluster(
+  n.cores, 
+  type = "PSOCK"
+  )
+
+#register it to be used by %dopar%
+doParallel::registerDoParallel(cl = my.cluster)
 
 homerange <- foreach(i = 1:length(BRBs_BM_WI),
                       .combine = c,
                       .packages = c("adehabitatHR")) %dopar% {
                       getverticeshr.estUD(BRBs_BM_WI[[i]])    
                       }
-
 # Stop the parallel backend
 stopCluster(my.cluster)
+
+# Save
+for(i in 1:length(homerange)){
+  writeVector(vud[[i]], paste0(here("BRB_UDs"),"/",names(vud[i])))
+}
+
 ```
 
 
-```{r, eval=FALSE}
+```{r eval=FALSE}
 
 writeVector(homerange,paste0(here("BRB_UDs")),"/BM_WI_",substr(names(BM_WI_Traj[i]),7,11),"_",name_burst[[tally]], overwrite_layer=TRUE))
 
@@ -978,7 +1007,7 @@ write.csv(BRB_area, paste0(here("BRB_UDs"), "/TR_RU_BRB_areas.csv", sep=""), row
 
 ## The BRB calculations sometimes require loop chunks as the computer runs out of memory. The code chunk below reads in the outputs, re-calculates the areas, and tables the details for all UDs - including the aggregate kernel-UDs.
 
-```{r, echo=FALSE, eval=FALSE}
+```{r echo=FALSE, eval=FALSE}
 
 
 ## Bullmoose WI Table
