@@ -296,13 +296,14 @@ for(y in 1:length(years)){
      Caribou_BM_RU_LI[[tally]] <- temp[!temp$AnimalID %in% IndID$ID,]
      names(Caribou_BM_RU_LI)[tally] <- paste0("Caribou_BM_RU_",years[y])
      tally = tally + 1}else{next()}
-}
+  }
 
 Caribou_BM_RU_LI[sapply(Caribou_BM_RU_LI,function(x) all(is.na(x)))] <- NULL
 
 ## Individual Bullmoose trajectories: by year and by season
 CaribouBM.ltraj <- as.ltraj(xy = Caribou_BM[,c("E", "N")], 
-                       date =  as.POSIXct(Caribou_BM$timestamp, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
+                       date =  as.POSIXct(Caribou_BM$timestamp,
+                       format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
                        id = Caribou_BM$AnimalID, typeII = TRUE)
 
 ##Winter
@@ -310,10 +311,12 @@ BM_WI_Traj <- list()
 
 for(l in 1:length(Caribou_BM_WI_LI)){
   BM_WI_Traj[[l]] <-  as.ltraj(xy = Caribou_BM_WI_LI[[l]][,c("E", "N")], 
-                          date =  as.POSIXct(Caribou_BM_WI_LI[[l]]$timestamp, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
-                          id = Caribou_BM_WI_LI[[l]]$AnimalID, typeII = TRUE)
+                          date =  as.POSIXct(Caribou_BM_WI_LI[[l]]$timestamp,
+                          format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
+                          id = Caribou_BM_WI_LI[[l]]$AnimalID,
+                          typeII = TRUE)
   names(BM_WI_Traj)[l] <- paste0("BM_WI_",unique(Caribou_BM_WI_LI[[l]]$YearSeas))
-}
+  }
 
 
 ##Calving
@@ -372,7 +375,6 @@ for(y in 1:length(years)){
 }
 
 Caribou_TR_WI_LI[sapply(Caribou_TR_WI_LI,function(x) all(is.na(x)))] <- NULL
-
 
 ## Roman Calving
 Caribou_TR_CA_LI <- list()
@@ -664,7 +666,7 @@ stopCluster(my.cluster)
 
 for(i in 1:length(BRBs_BM_WI)){
   BRBs_BM_WI[[i]] <-st_as_sf(BRBs_BM_WI[[i]])
-  st_write(BRBs_BM_WIi[[i]], paste0(here("BRB_UDs"), "/", names(BRBs_BM_WI[[i]])))
+  st_write(BRBs_BM_WI[[i]], paste0(here("BRB_UDs"), "/", names(BRBs_BM_WI[[i]])))
 }
 
 ## the loop above as an apply:
@@ -676,6 +678,7 @@ lapply(BRBs_BM_WIi, st_write(BRBs_BM_WIi[[i]], paste0(here("BRB_UDs"), "/", name
 #create the cluster
 #Reduce the number of cores to save mem.
 # See: https://stackoverflow.com/questions/28503208/doparallel-error-in-r-error-in-serializedata-nodecon-error-writing-to-con
+
 n.cores <- parallel::detectCores() - 12
 my.cluster <- parallel::makeCluster(
   n.cores, 
