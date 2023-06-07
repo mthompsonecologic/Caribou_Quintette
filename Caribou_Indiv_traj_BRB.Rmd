@@ -670,32 +670,32 @@ for(i in 1:length(BRBs_BM_WI)){
 }
 
 ## the loop above as an apply:
-BRBs_BM_WIi <- lapply(BRBs_BM_WIi, st_as_sf(BRBs_BM_WIi))
+#BRBs_BM_WI <- lapply(BRBs_BM_WI, st_as_sf(BRBs_BM_WI))
+#lapply(BRBs_BM_WI, st_write(BRBs_BM_WI, paste0(here("BRB_UDs"), "/", names(BRBs_BM_WI))))
 
-lapply(BRBs_BM_WIi, st_write(BRBs_BM_WIi[[i]], paste0(here("BRB_UDs"), "/", names(BRBs_BM_WI[[i]]))))
 # BRB metrics
 
 #create the cluster
 #Reduce the number of cores to save mem.
 # See: https://stackoverflow.com/questions/28503208/doparallel-error-in-r-error-in-serializedata-nodecon-error-writing-to-con
 
-n.cores <- parallel::detectCores() - 12
-my.cluster <- parallel::makeCluster(
-  n.cores, 
-  type = "PSOCK"
-  )
+#n.cores <- parallel::detectCores() - 12
+#my.cluster <- parallel::makeCluster(
+#  n.cores, 
+#  type = "PSOCK"
+#  )
 
 #register it to be used by %dopar%
-doParallel::registerDoParallel(cl = my.cluster)
+#doParallel::registerDoParallel(cl = my.cluster)
 
 ## vud has to be run on ACENET. Memory requirements too high.
-vud <- foreach(i = 1:length(BRBs_BM_WI),
-                      .combine = c,
-                      .packages = c("adehabitatHR","adehabitatLT")) %dopar% {
-                      getvolumeUD(BRBs_BM_WI[[i]])    
-                      }
+#vud <- foreach(i = 1:length(BRBs_BM_WI),
+#                      .combine = c,
+#                      .packages = c("adehabitatHR","adehabitatLT")) %dopar% {
+#                      getvolumeUD(BRBs_BM_WI[[i]])    
+#                      }
 # Stop the parallel backend
-stopCluster(my.cluster)
+#stopCluster(my.cluster)
 
 #Area cluster
 n.cores <- parallel::detectCores() - 12
@@ -718,9 +718,503 @@ stopCluster(my.cluster)
 
 # Save
 for(i in 1:length(homerange)){
-  writeVector(vud[[i]], paste0(here("BRB_UDs"),"/",names(vud[i])))
+  #writeVector(vud[[i]], paste0(here("BRB_UDs"),"/",names(vud[i])))
   writeVector(homerange[[i]], paste0(here("BRB_UDs"),"/",names(homerange[i])))
 }
+
+## BM Calving
+
+## D: diffusion parameter - using ML function:
+
+DLik_BM_CA <- list()
+tally = 1
+BM_CA_Traj <- BM_CA_Traj[order(names(BM_CA_Traj))]
+
+for(t in 1:length(BM_CA_Traj)){
+  DLik_BM_CA[[tally]] <- BRB.likD(BM_CA_Traj[[t]], Tmax=1500*60, Lmin=2,  Dr=c(2,7))
+  tally = tally + 1
+}
+names(DLik_BM_CA) <- names(BM_CA_Traj)
+
+## DLik_...computes a list of each animal n = observations during the time interval [0,Ttotal], and D- diffusion parameter. See: Horne, J.S., Garton, E.O., Krone, S.M. and Lewis, J.S. 2007. Analyzing animal movements using Brownian bridges. Ecology, 88, 2354–235
+## These are contained in a list by year
+
+DLik_BM_CA_u <- unlist(DLik_BM_CA)
+DLik_BM_CA_u <- DLik_BM_CA_u[1:(length(DLik_BM_CA_u)/2)*2]
+DLik_BM_CA_u <- as.numeric(as.vector(DLik_BM_CA_u))
+
+Traj_len <- as.numeric(as.vector(lengths(BM_CA_Traj)))
+
+Traj_li <- list()
+a = 1
+
+for(i in 1:length(DLik_BM_CA_u)){
+  for(y in 1:length(Traj_len)){
+    if(a <= Traj_len[y]){
+      Traj_li[[i]] <- BM_CA_Traj[[y]][a]
+      a = a+1
+    }else{a = 1
+    next()}
+  }
+}
+
+# Note to understand resultant data structure:
+sum(lengths(DLik_BM_CA))
+#[1] 150
+sum(Traj_len)
+#[1] 150
+
+# BRB calculation
+
+#create the cluster
+n.cores <- parallel::detectCores() - 13
+my.cluster <- parallel::makeCluster(
+  n.cores, 
+  type = "PSOCK"
+  )
+
+#register it to be used by %dopar%
+doParallel::registerDoParallel(cl = my.cluster)
+
+BRBs_BM_CA <- foreach(i = 1:length(Traj_li),
+                      .combine = c,
+                      .packages = c("adehabitatHR","adehabitatLT")) %dopar% {
+                          BRB(Traj_li[[i]][1],
+                          D = DLik_BM_CA_u[i],
+                          Tmax = 1500*60,
+                          Lmin = 2,
+                          hmin = 20,
+                          type = "UD",
+                          grid = 4000)
+                      }
+
+# Stop the parallel backend
+stopCluster(my.cluster)
+
+for(i in 1:length(BRBs_BM_CA)){
+  BRBs_BM_CA[[i]] <-st_as_sf(BRBs_BM_CA[[i]])
+  st_write(BRBs_BM_CA[[i]], paste0(here("BRB_UDs"), "/", names(BRBs_BM_CA[[i]])))
+}
+
+## the loop above as an apply:
+#BRBs_BM_CA <- lapply(BRBs_BM_CA, st_as_sf(BRBs_BM_CA))
+#lapply(BRBs_BM_CA, st_write(BRBs_BM_CA, paste0(here("BRB_UDs"), "/", names(BRBs_BM_CA))))
+
+# BRB metrics
+
+#create the cluster
+#Reduce the number of cores to save mem.
+# See: https://stackoverflow.com/questions/28503208/doparallel-error-in-r-error-in-serializedata-nodecon-error-writing-to-con
+
+#n.cores <- parallel::detectCores() - 12
+#my.cluster <- parallel::makeCluster(
+#  n.cores, 
+#  type = "PSOCK"
+#  )
+
+#register it to be used by %dopar%
+#doParallel::registerDoParallel(cl = my.cluster)
+
+## vud has to be run on ACENET. Memory requirements too high.
+#vud <- foreach(i = 1:length(BRBs_BM_CA),
+#                      .combine = c,
+#                      .packages = c("adehabitatHR","adehabitatLT")) %dopar% {
+#                      getvolumeUD(BRBs_BM_CA[[i]])    
+#                      }
+# Stop the parallel backend
+#stopCluster(my.cluster)
+
+#Area cluster
+n.cores <- parallel::detectCores() - 12
+my.cluster <- parallel::makeCluster(
+  n.cores, 
+  type = "PSOCK"
+  )
+
+#register it to be used by %dopar%
+doParallel::registerDoParallel(cl = my.cluster)
+
+homerange <- foreach(i = 1:length(BRBs_BM_CA),
+                      .combine = c,
+                      .packages = c("adehabitatHR")) %dopar% {
+                      getverticeshr.estUD(BRBs_BM_CA[[i]])    
+                      }
+
+# Stop the parallel backend
+stopCluster(my.cluster)
+
+# Save
+for(i in 1:length(homerange)){
+  #writeVector(vud[[i]], paste0(here("BRB_UDs"),"/",names(vud[i])))
+  writeVector(homerange[[i]], paste0(here("BRB_UDs"),"/",names(homerange[i])))
+  }
+  
+  
+  ## BM Summer
+
+## D: diffusion parameter - using ML function:
+
+DLik_BM_SU <- list()
+tally = 1
+BM_SU_Traj <- BM_SU_Traj[order(names(BM_SU_Traj))]
+
+for(t in 1:length(BM_SU_Traj)){
+  DLik_BM_SU[[tally]] <- BRB.likD(BM_SU_Traj[[t]], Tmax=1500*60, Lmin=2,  Dr=c(2,7))
+  tally = tally + 1
+}
+names(DLik_BM_SU) <- names(BM_SU_Traj)
+
+## DLik_...computes a list of each animal n = observations during the time interval [0,Ttotal], and D- diffusion parameter. See: Horne, J.S., Garton, E.O., Krone, S.M. and Lewis, J.S. 2007. Analyzing animal movements using Brownian bridges. Ecology, 88, 2354–235
+## These are contained in a list by year
+
+DLik_BM_SU_u <- unlist(DLik_BM_SU)
+DLik_BM_SU_u <- DLik_BM_SU_u[1:(length(DLik_BM_SU_u)/2)*2]
+DLik_BM_SU_u <- as.numeric(as.vector(DLik_BM_SU_u))
+
+Traj_len <- as.numeric(as.vector(lengths(BM_SU_Traj)))
+
+Traj_li <- list()
+a = 1
+
+for(i in 1:length(DLik_BM_SU_u)){
+  for(y in 1:length(Traj_len)){
+    if(a <= Traj_len[y]){
+      Traj_li[[i]] <- BM_SU_Traj[[y]][a]
+      a = a+1
+    }else{a = 1
+    next()}
+  }
+}
+
+# BRB Calculation
+
+#create the cluster
+n.cores <- parallel::detectCores() - 13
+my.cluster <- parallel::makeCluster(
+  n.cores, 
+  type = "PSOCK"
+  )
+
+#register it to be used by %dopar%
+doParallel::registerDoParallel(cl = my.cluster)
+
+BRBs_BM_SU <- foreach(i = 1:length(Traj_li),
+                      .combine = c,
+                      .packages = c("adehabitatHR","adehabitatLT")) %dopar% {
+                          BRB(Traj_li[[i]][1],
+                          D = DLik_BM_SU_u[i],
+                          Tmax = 1500*60,
+                          Lmin = 2,
+                          hmin = 20,
+                          type = "UD",
+                          grid = 4000)
+                      }
+
+# Stop the parallel backend
+stopCluster(my.cluster)
+
+for(i in 1:length(BRBs_BM_SU)){
+  BRBs_BM_SU[[i]] <-st_as_sf(BRBs_BM_SU[[i]])
+  st_write(BRBs_BM_SU[[i]], paste0(here("BRB_UDs"), "/", names(BRBs_BM_SU[[i]])))
+}
+
+## the loop above as an apply:
+#BRBs_BM_SU <- lapply(BRBs_BM_SU, st_as_sf(BRBs_BM_SU))
+#lapply(BRBs_BM_SU, st_write(BRBs_BM_SU, paste0(here("BRB_UDs"), "/", names(BRBs_BM_SU))))
+
+# BRB metrics
+
+#create the cluster
+#Reduce the number of cores to save mem.
+# See: https://stackoverflow.com/questions/28503208/doparallel-error-in-r-error-in-serializedata-nodecon-error-writing-to-con
+
+#n.cores <- parallel::detectCores() - 12
+#my.cluster <- parallel::makeCluster(
+#  n.cores, 
+#  type = "PSOCK"
+#  )
+
+#register it to be used by %dopar%
+#doParallel::registerDoParallel(cl = my.cluster)
+
+## vud has to be run on ACENET. Memory requirements too high.
+#vud <- foreach(i = 1:length(BRBs_BM_SU),
+#                      .combine = c,
+#                      .packages = c("adehabitatHR","adehabitatLT")) %dopar% {
+#                      getvolumeUD(BRBs_BM_SU[[i]])    
+#                      }
+# Stop the parallel backend
+#stopCluster(my.cluster)
+
+#Area cluster
+n.cores <- parallel::detectCores() - 12
+my.cluster <- parallel::makeCluster(
+  n.cores, 
+  type = "PSOCK"
+  )
+
+#register it to be used by %dopar%
+doParallel::registerDoParallel(cl = my.cluster)
+
+homerange <- foreach(i = 1:length(BRBs_BM_SU),
+                      .combine = c,
+                      .packages = c("adehabitatHR")) %dopar% {
+                      getverticeshr.estUD(BRBs_BM_SU[[i]])    
+                      }
+
+# Stop the parallel backend
+stopCluster(my.cluster)
+
+# Save
+for(i in 1:length(homerange)){
+  #writeVector(vud[[i]], paste0(here("BRB_UDs"),"/",names(vud[i])))
+  writeVector(homerange[[i]], paste0(here("BRB_UDs"),"/",names(homerange[i])))
+}
+
+## BM Rutting
+
+## D: diffusion parameter - using ML function:
+
+DLik_BM_RU <- list()
+tally = 1
+BM_RU_Traj <- BM_RU_Traj[order(names(BM_RU_Traj))]
+
+for(t in 1:length(BM_RU_Traj)){
+  DLik_BM_RU[[tally]] <- BRB.likD(BM_RU_Traj[[t]], Tmax=1500*60, Lmin=2,  Dr=c(2,7))
+  tally = tally + 1
+}
+names(DLik_BM_RU) <- names(BM_RU_Traj)
+
+## DLik_...computes a list of each animal n = observations during the time interval [0,Ttotal], and D- diffusion parameter. See: Horne, J.S., Garton, E.O., Krone, S.M. and Lewis, J.S. 2007. Analyzing animal movements using Brownian bridges. Ecology, 88, 2354–235
+## These are contained in a list by year
+
+DLik_BM_RU_u <- unlist(DLik_BM_RU)
+DLik_BM_RU_u <- DLik_BM_RU_u[1:(length(DLik_BM_RU_u)/2)*2]
+DLik_BM_RU_u <- as.numeric(as.vector(DLik_BM_RU_u))
+
+Traj_len <- as.numeric(as.vector(lengths(BM_RU_Traj)))
+
+Traj_li <- list()
+a = 1
+
+for(i in 1:length(DLik_BM_RU_u)){
+  for(y in 1:length(Traj_len)){
+    if(a <= Traj_len[y]){
+      Traj_li[[i]] <- BM_RU_Traj[[y]][a]
+      a = a+1
+    }else{a = 1
+    next()}
+  }
+}
+
+# BRB Calculation
+
+#create the cluster
+n.cores <- parallel::detectCores() - 13
+my.cluster <- parallel::makeCluster(
+  n.cores, 
+  type = "PSOCK"
+  )
+
+#register it to be used by %dopar%
+doParallel::registerDoParallel(cl = my.cluster)
+
+BRBs_BM_RU <- foreach(i = 1:length(Traj_li),
+                      .combine = c,
+                      .packages = c("adehabitatHR","adehabitatLT")) %dopar% {
+                          BRB(Traj_li[[i]][1],
+                          D = DLik_BM_RU_u[i],
+                          Tmax = 1500*60,
+                          Lmin = 2,
+                          hmin = 20,
+                          type = "UD",
+                          grid = 4000)
+                      }
+
+# Stop the parallel backend
+stopCluster(my.cluster)
+
+for(i in 1:length(BRBs_BM_RU)){
+  BRBs_BM_RU[[i]] <-st_as_sf(BRBs_BM_RU[[i]])
+  st_write(BRBs_BM_RU[[i]], paste0(here("BRB_UDs"), "/", names(BRBs_BM_RU[[i]])))
+}
+
+## the loop above as an apply:
+#BRBs_BM_RU <- lapply(BRBs_BM_RU, st_as_sf(BRBs_BM_RU))
+#lapply(BRBs_BM_RU, st_write(BRBs_BM_RU, paste0(here("BRB_UDs"), "/", names(BRBs_BM_RU))))
+
+# BRB metrics
+
+#create the cluster
+#Reduce the number of cores to save mem.
+# See: https://stackoverflow.com/questions/28503208/doparallel-error-in-r-error-in-serializedata-nodecon-error-writing-to-con
+
+#n.cores <- parallel::detectCores() - 12
+#my.cluster <- parallel::makeCluster(
+#  n.cores, 
+#  type = "PSOCK"
+#  )
+
+#register it to be used by %dopar%
+#doParallel::registerDoParallel(cl = my.cluster)
+
+## vud has to be run on ACENET. Memory requirements too high.
+#vud <- foreach(i = 1:length(BRBs_BM_RU),
+#                      .combine = c,
+#                      .packages = c("adehabitatHR","adehabitatLT")) %dopar% {
+#                      getvolumeUD(BRBs_BM_RU[[i]])    
+#                      }
+# Stop the parallel backend
+#stopCluster(my.cluster)
+
+#Area cluster
+n.cores <- parallel::detectCores() - 12
+my.cluster <- parallel::makeCluster(
+  n.cores, 
+  type = "PSOCK"
+  )
+
+#register it to be used by %dopar%
+doParallel::registerDoParallel(cl = my.cluster)
+
+homerange <- foreach(i = 1:length(BRBs_BM_RU),
+                      .combine = c,
+                      .packages = c("adehabitatHR")) %dopar% {
+                      getverticeshr.estUD(BRBs_BM_RU[[i]])    
+                      }
+
+# Stop the parallel backend
+stopCluster(my.cluster)
+
+# Save
+for(i in 1:length(homerange)){
+  #writeVector(vud[[i]], paste0(here("BRB_UDs"),"/",names(vud[i])))
+  writeVector(homerange[[i]], paste0(here("BRB_UDs"),"/",names(homerange[i])))
+}
+
+## Roman
+
+## TR Rutting
+
+## D: diffusion parameter - using ML function:
+
+DLik_TR_RU <- list()
+tally = 1
+TR_RU_Traj <- TR_RU_Traj[order(names(TR_RU_Traj))]
+
+for(t in 1:length(TR_RU_Traj)){
+  DLik_TR_RU[[tally]] <- BRB.likD(TR_RU_Traj[[t]], Tmax=1500*60, Lmin=2,  Dr=c(2,7))
+  tally = tally + 1
+}
+names(DLik_TR_RU) <- names(TR_RU_Traj)
+
+## DLik_...computes a list of each animal n = observations during the time interval [0,Ttotal], and D- diffusion parameter. See: Horne, J.S., Garton, E.O., Krone, S.M. and Lewis, J.S. 2007. Analyzing animal movements using Brownian bridges. Ecology, 88, 2354–235
+## These are contained in a list by year
+
+DLik_TR_RU_u <- unlist(DLik_TR_RU)
+DLik_TR_RU_u <- DLik_TR_RU_u[1:(length(DLik_TR_RU_u)/2)*2]
+DLik_TR_RU_u <- as.numeric(as.vector(DLik_TR_RU_u))
+
+Traj_len <- as.numeric(as.vector(lengths(TR_RU_Traj)))
+
+Traj_li <- list()
+a = 1
+
+for(i in 1:length(DLik_TR_RU_u)){
+  for(y in 1:length(Traj_len)){
+    if(a <= Traj_len[y]){
+      Traj_li[[i]] <- TR_RU_Traj[[y]][a]
+      a = a+1
+    }else{a = 1
+    next()}
+  }
+}
+
+# BRB Calculation
+
+#create the cluster
+n.cores <- parallel::detectCores() - 13
+my.cluster <- parallel::makeCluster(
+  n.cores, 
+  type = "PSOCK"
+  )
+
+#register it to be used by %dopar%
+doParallel::registerDoParallel(cl = my.cluster)
+
+BRBs_TR_RU <- foreach(i = 1:length(Traj_li),
+                      .combine = c,
+                      .packages = c("adehabitatHR","adehabitatLT")) %dopar% {
+                          BRB(Traj_li[[i]][1],
+                          D = DLik_TR_RU_u[i],
+                          Tmax = 1500*60,
+                          Lmin = 2,
+                          hmin = 20,
+                          type = "UD",
+                          grid = 4000)
+                      }
+
+# Stop the parallel backend
+stopCluster(my.cluster)
+
+for(i in 1:length(BRBs_TR_RU)){
+  BRBs_TR_RU[[i]] <-st_as_sf(BRBs_TR_RU[[i]])
+  st_write(BRBs_TR_RU[[i]], paste0(here("BRB_UDs"), "/", names(BRBs_TR_RU[[i]])))
+}
+
+## the loop above as an apply:
+#BRBs_TR_RU <- lapply(BRBs_TR_RU, st_as_sf(BRBs_TR_RU))
+#lapply(BRBs_TR_RU, st_write(BRBs_TR_RU, paste0(here("BRB_UDs"), "/", names(BRBs_TR_RU))))
+
+# BRB metrics
+
+#create the cluster
+#Reduce the number of cores to save mem.
+# See: https://stackoverflow.com/questions/28503208/doparallel-error-in-r-error-in-serializedata-nodecon-error-writing-to-con
+
+#n.cores <- parallel::detectCores() - 12
+#my.cluster <- parallel::makeCluster(
+#  n.cores, 
+#  type = "PSOCK"
+#  )
+
+#register it to be used by %dopar%
+#doParallel::registerDoParallel(cl = my.cluster)
+
+## vud has to be run on ACENET. Memory requirements too high.
+#vud <- foreach(i = 1:length(BRBs_TR_RU),
+#                      .combine = c,
+#                      .packages = c("adehabitatHR","adehabitatLT")) %dopar% {
+#                      getvolumeUD(BRBs_TR_RU[[i]])    
+#                      }
+# Stop the parallel backend
+#stopCluster(my.cluster)
+
+#Area cluster
+n.cores <- parallel::detectCores() - 12
+my.cluster <- parallel::makeCluster(
+  n.cores, 
+  type = "PSOCK"
+  )
+
+#register it to be used by %dopar%
+doParallel::registerDoParallel(cl = my.cluster)
+
+homerange <- foreach(i = 1:length(BRBs_TR_RU),
+                      .combine = c,
+                      .packages = c("adehabitatHR")) %dopar% {
+                      getverticeshr.estUD(BRBs_TR_RU[[i]])    
+                      }
+
+# Stop the parallel backend
+stopCluster(my.cluster)
+
+# Save
+for(i in 1:length(homerange)){
+  #writeVector(vud[[i]], paste0(here("BRB_UDs"),"/",names(vud[i])))
+  writeVector(homerange[[i]], paste0(here("BRB_UDs"),"/",names(homerange[i])))
+}
+
 
 ```
 
