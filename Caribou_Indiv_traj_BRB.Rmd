@@ -321,30 +321,36 @@ BM_CA_Traj <- list()
 
 for(l in 1:length(Caribou_BM_CA_LI)){
   BM_CA_Traj[[l]] <-  as.ltraj(xy = Caribou_BM_CA_LI[[l]][,c("E", "N")], 
-                          date =  as.POSIXct(Caribou_BM_CA_LI[[l]]$timestamp, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
-                          id = Caribou_BM_CA_LI[[l]]$AnimalID, typeII = TRUE)
+                          date =  as.POSIXct(Caribou_BM_CA_LI[[l]]$timestamp,
+                          format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
+                          id = Caribou_BM_CA_LI[[l]]$AnimalID,
+                          typeII = TRUE)
   names(BM_CA_Traj)[l] <- paste0("BM_CA_",unique(Caribou_BM_CA_LI[[l]]$YearSeas))
-}
+  }
 
 ##Summer
 BM_SU_Traj <- list()
 
 for(l in 1:length(Caribou_BM_SU_LI)){
   BM_SU_Traj[[l]] <-  as.ltraj(xy = Caribou_BM_SU_LI[[l]][,c("E", "N")], 
-                          date =  as.POSIXct(Caribou_BM_SU_LI[[l]]$timestamp, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
-                          id = Caribou_BM_SU_LI[[l]]$AnimalID, typeII = TRUE)
+                          date =  as.POSIXct(Caribou_BM_SU_LI[[l]]$timestamp,
+                          format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
+                          id = Caribou_BM_SU_LI[[l]]$AnimalID,
+                          typeII = TRUE)
   names(BM_SU_Traj)[l] <- paste0("BM_SU_",unique(Caribou_BM_SU_LI[[l]]$YearSeas))
-}
+  }
 
 ##Rutting
 BM_RU_Traj <- list()
 
 for(l in 1:length(Caribou_BM_RU_LI)){
   BM_RU_Traj[[l]] <-  as.ltraj(xy = Caribou_BM_RU_LI[[l]][,c("E", "N")], 
-                          date =  as.POSIXct(Caribou_BM_RU_LI[[l]]$timestamp, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
-                          id = Caribou_BM_RU_LI[[l]]$AnimalID, typeII = TRUE)
+                          date =  as.POSIXct(Caribou_BM_RU_LI[[l]]$timestamp,
+                          format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
+                          id = Caribou_BM_RU_LI[[l]]$AnimalID,
+                          typeII = TRUE)
   names(BM_RU_Traj)[l] <- paste0("BM_RU_",unique(Caribou_BM_RU_LI[[l]]$YearSeas))
-}
+  }
 
 ## Roman winter
 Caribou_TR_WI_LIa <- list()
@@ -391,7 +397,6 @@ for(y in 1:length(years)){
 
 Caribou_TR_CA_LI[sapply(Caribou_TR_CA_LI,function(x) all(is.na(x)))] <- NULL
 
-
 ## Roman Summer
 Caribou_TR_SU_LI <- list()
 tally = 1
@@ -415,14 +420,12 @@ for(y in 1:length(years)){
 
 Caribou_TR_SU_LI[sapply(Caribou_TR_SU_LI,function(x) all(is.na(x)))] <- NULL
 
-
 ## Roman Rutting
 Caribou_TR_RU_LI <- list()
 tally = 1
 x = 1
 IndID <- data.frame(matrix(ncol=1))
 colnames(IndID) <- "ID"
-
 
 for(y in 1:length(years)){
     if(nrow(data.frame(Caribou_TR_RU[which(Caribou_TR_RU$YearSeas == years[y]), ])) > 0){
@@ -442,18 +445,22 @@ Caribou_TR_RU_LI[sapply(Caribou_TR_RU_LI,function(x) all(is.na(x)))] <- NULL
 
 ## Individual Roman trajectories: by year and by season
 CaribouTR.ltraj <- as.ltraj(xy = Caribou_TR[,c("E", "N")], 
-                       date =  as.POSIXct(Caribou_TR$timestamp, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
-                       id = Caribou_TR$AnimalID, typeII = TRUE)
+                       date =  as.POSIXct(Caribou_TR$timestamp,
+                       format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
+                       id = Caribou_TR$AnimalID,
+                       typeII = TRUE)
 
 ##Winter
 TR_WI_Traj <- list()
 
 for(l in 1:length(Caribou_TR_WI_LI)){
   TR_WI_Traj[[l]] <-  as.ltraj(xy = Caribou_TR_WI_LI[[l]][,c("E", "N")], 
-                          date =  as.POSIXct(Caribou_TR_WI_LI[[l]]$timestamp, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
-                          id = Caribou_TR_WI_LI[[l]]$AnimalID, typeII = TRUE)
+                          date =  as.POSIXct(Caribou_TR_WI_LI[[l]]$timestamp,
+                          format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
+                          id = Caribou_TR_WI_LI[[l]]$AnimalID,
+                          typeII = TRUE)
   names(TR_WI_Traj)[l] <- paste0("TR_WI_",unique(Caribou_TR_WI_LI[[l]]$YearSeas))
-}
+  }
 
 
 ##Calving
@@ -461,33 +468,33 @@ TR_CA_Traj <- list()
 
 for(l in 1:length(Caribou_TR_CA_LI)){
   TR_CA_Traj[[l]] <-  as.ltraj(xy = Caribou_TR_CA_LI[[l]][,c("E", "N")], 
-                          date =  as.POSIXct(Caribou_TR_CA_LI[[l]]$timestamp, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
+                          date =  as.POSIXct(Caribou_TR_CA_LI[[l]]$timestamp,
+                          format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
                           id = Caribou_TR_CA_LI[[l]]$AnimalID, typeII = TRUE)
   names(TR_CA_Traj)[l] <- paste0("TR_CA_",unique(Caribou_TR_CA_LI[[l]]$YearSeas))
-}
+  }
 
 ##Summer
 TR_SU_Traj <- list()
 
 for(l in 1:length(Caribou_TR_SU_LI)){
   TR_SU_Traj[[l]] <-  as.ltraj(xy = Caribou_TR_SU_LI[[l]][,c("E", "N")], 
-                          date =  as.POSIXct(Caribou_TR_SU_LI[[l]]$timestamp, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
+                          date =  as.POSIXct(Caribou_TR_SU_LI[[l]]$timestamp,
+                          format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
                           id = Caribou_TR_SU_LI[[l]]$AnimalID, typeII = TRUE)
   names(TR_SU_Traj)[l] <- paste0("TR_SU_",unique(Caribou_TR_SU_LI[[l]]$YearSeas))
-}
+  }
 
 ##Rutting
 TR_RU_Traj <- list()
 
 for(l in 1:length(Caribou_TR_RU_LI)){
   TR_RU_Traj[[l]] <-  as.ltraj(xy = Caribou_TR_RU_LI[[l]][,c("E", "N")], 
-                          date =  as.POSIXct(Caribou_TR_RU_LI[[l]]$timestamp, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
+                          date =  as.POSIXct(Caribou_TR_RU_LI[[l]]$timestamp,
+                          format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
                           id = Caribou_TR_RU_LI[[l]]$AnimalID, typeII = TRUE)
   names(TR_RU_Traj)[l] <- paste0("TR_RU_",unique(Caribou_TR_RU_LI[[l]]$YearSeas))
-}
-
-
-
+  }
 
 ```
 
@@ -631,7 +638,7 @@ sum(Traj_len)
 # BRB calculation
 
 #create the cluster
-n.cores <- parallel::detectCores() - 1
+n.cores <- parallel::detectCores() - 13
 my.cluster <- parallel::makeCluster(
   n.cores, 
   type = "PSOCK"
@@ -640,8 +647,6 @@ my.cluster <- parallel::makeCluster(
 #register it to be used by %dopar%
 doParallel::registerDoParallel(cl = my.cluster)
 
-#register it to be used by %dopar%
-doParallel::registerDoParallel(cl = my.cluster)
 BRBs_BM_WI <- foreach(i = 1:length(Traj_li),
                       .combine = c,
                       .packages = c("adehabitatHR","adehabitatLT")) %dopar% {
@@ -657,18 +662,21 @@ BRBs_BM_WI <- foreach(i = 1:length(Traj_li),
 # Stop the parallel backend
 stopCluster(my.cluster)
 
-
 for(i in 1:length(BRBs_BM_WI)){
   BRBs_BM_WIi[[i]] <-st_as_sf(BRBs_BM_WI[[i]])
   st_write(BRBs_BM_WIi[[i]], paste0(here("BRB_UDs"), "/", names(BRBs_BM_WI[[i]])))
 }
 
+## the loop above as an apply:
+BRBs_BM_WIi <- lapply(BRBs_BM_WIi, st_as_sf(BRBs_BM_WIi))
+
+lapply(BRBs_BM_WIi, st_write(BRBs_BM_WIi[[i]], paste0(here("BRB_UDs"), "/", names(BRBs_BM_WI[[i]]))))
 # BRB metrics
 
 #create the cluster
 #Reduce the number of cores to save mem.
 # See: https://stackoverflow.com/questions/28503208/doparallel-error-in-r-error-in-serializedata-nodecon-error-writing-to-con
-n.cores <- parallel::detectCores() - 1
+n.cores <- parallel::detectCores() - 12
 my.cluster <- parallel::makeCluster(
   n.cores, 
   type = "PSOCK"
@@ -687,7 +695,7 @@ vud <- foreach(i = 1:length(BRBs_BM_WI),
 stopCluster(my.cluster)
 
 #Area cluster
-n.cores <- parallel::detectCores() - 1
+n.cores <- parallel::detectCores() - 12
 my.cluster <- parallel::makeCluster(
   n.cores, 
   type = "PSOCK"
