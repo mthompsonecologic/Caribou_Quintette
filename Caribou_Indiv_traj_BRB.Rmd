@@ -663,7 +663,7 @@ BRBs_BM_WI <- foreach(i = 1:length(Traj_li),
 stopCluster(my.cluster)
 
 for(i in 1:length(BRBs_BM_WI)){
-  BRBs_BM_WIi[[i]] <-st_as_sf(BRBs_BM_WI[[i]])
+  BRBs_BM_WI[[i]] <-st_as_sf(BRBs_BM_WI[[i]])
   st_write(BRBs_BM_WIi[[i]], paste0(here("BRB_UDs"), "/", names(BRBs_BM_WI[[i]])))
 }
 
