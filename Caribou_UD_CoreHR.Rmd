@@ -71,7 +71,7 @@ ff <- list.files(here("adeHRoutput_noclip","SeasonalPts"),
                  pattern="\\.shp$",
                  full.names=TRUE)
 
-seasonalf <- lapply(ff, shapefile)
+seasonalf <- lapply(ff, vect)
 names(seasonalf) <- list.files(here("adeHRoutput_noclip","SeasonalPts"),
                                pattern="\\.shp$",
                                full.names=FALSE)
@@ -243,8 +243,7 @@ names(ver) <- ver_UDdir
 
 ```
 
-
-names(seasonsUD) <- season_UDdir
+#
 
 
 ```{r, eval=FALSE}
