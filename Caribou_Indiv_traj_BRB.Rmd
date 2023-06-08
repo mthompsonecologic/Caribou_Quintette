@@ -579,9 +579,6 @@ for (i in 2 : length(SPDF)){
 plot(SPDF[[i]],col = cols[i],border = bord, add = T)
 }
 
-
-
-
 ```
 
 # BRB Individuals: Site, year, and season
@@ -638,9 +635,9 @@ for(y in 1:length(Traj_len)){
     }
 
 # Note to understand resultant data structure:
-sum(lengths(DLik_BM_WI))
+#sum(lengths(DLik_BM_WI))
 #[1] 150
-sum(Traj_len)
+#sum(Traj_len)
 #[1] 150
 
 ## The BRBs_BM_WI need to be named. The names are contained here:
@@ -689,7 +686,23 @@ WV <- function (x) {writeVector(x,
                             thenames,".shp"),
                             overwrite=TRUE)}
 
-sapply(BRBs_BM_WIv, FUN=WV, simplify=FALSE, USE.NAMES = TRUE)
+#create the cluster
+n.cores <- parallel::detectCores() - 10
+my.cluster <- parallel::makeCluster(
+  n.cores, 
+  type = "PSOCK"
+  )
+
+#register it to be used by %dopar%
+doParallel::registerDoParallel(cl = my.cluster)
+
+#sapply(BRBs_BM_WIv, FUN=WV, simplify=FALSE, USE.NAMES = TRUE)
+#See: https://bookdown.org/rdpeng/rprogdatascience/parallel-computation.html
+mcmapply(BRBs_BM_WIv, FUN=WV, simplify=FALSE, USE.NAMES = TRUE, mc.cores = n.cores)
+
+# Stop the parallel backend
+stopCluster(my.cluster)
+
 
 # BRB metrics
 
@@ -1102,10 +1115,6 @@ WV <- function (x) {writeVector(x,
 
 sapply(BRBs_BM_RUv, FUN=WV, simplify=FALSE, USE.NAMES = TRUE)
 
-#See: https://bookdown.org/rdpeng/rprogdatascience/parallel-computation.html
-mcmapply(BRBs_BM_RUv, FUN=WV, simplify=FALSE, USE.NAMES = TRUE)
-
-
 # BRB metrics
 
 #create the cluster
@@ -1217,9 +1226,9 @@ for(y in 1:length(Traj_len)){
     }
 
 # Note to understand resultant data structure:
-sum(lengths(DLik_TR_WI))
+#sum(lengths(DLik_TR_WI))
 #[1] 150
-sum(Traj_len)
+#sum(Traj_len)
 #[1] 150
 
 ## The BRBs_TR_WI need to be named. The names are contained here:
@@ -1283,6 +1292,7 @@ my.cluster <- parallel::makeCluster(
 doParallel::registerDoParallel(cl = my.cluster)
 
 #sapply(BRBs_TR_WIv, FUN=WV, simplify=FALSE, USE.NAMES = TRUE)
+#See: https://bookdown.org/rdpeng/rprogdatascience/parallel-computation.html
 mcmapply(BRBs_TR_WIv, FUN=WV, simplify=FALSE, USE.NAMES = TRUE, mc.cores = n.cores)
 
 # Stop the parallel backend
