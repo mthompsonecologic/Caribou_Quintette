@@ -1,0 +1,293 @@
+---
+title: "Caribou_UD_CoreHR"
+author: "Mark Thompson"
+date: "2023-06-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Package loads
+
+
+```{r packages}
+#	Load	required	packages
+
+#automatic install of packages if they are not installed already
+list.of.packages <- c(
+  "foreach",
+  "doParallel",
+  "here",
+  "raster",
+  "sp",
+  "terra",
+  "adehabitatHR",
+  "rgdal",
+  "maptools"
+  )
+
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+
+if(length(new.packages) > 0){
+  install.packages(new.packages, dep=TRUE)
+}
+
+#loading packages
+for(package.i in list.of.packages){
+  suppressPackageStartupMessages(
+    library(
+      package.i, 
+      character.only = TRUE
+      )
+    )
+}
+
+require(sp)
+require(maptools)
+require(adehabitatHR)
+require(rgdal)
+
+```
+
+# Core 50% UD estimates
+
+A parallel processing approach.
+
+```{r HREF50 Aggregates, echo=FALSE}
+
+#######################################################################
+per	=50 #	percent	utilization	distribution	estimated
+h="href" #	bandwidth	setting	("href",	"LSCV",	or	user	specified	number)	
+grid=4000
+extent=2
+#######################################################################
+
+##Aggregated animals in Seasons by Years
+
+## Load and parse the seasonal data:
+ff <- list.files(here("adeHRoutput_noclip","SeasonalPts"),
+                 pattern="\\.shp$",
+                 full.names=TRUE)
+
+seasonalf <- lapply(ff, shapefile)
+names(seasonalf) <- list.files(here("adeHRoutput_noclip","SeasonalPts"),
+                               pattern="\\.shp$",
+                               full.names=FALSE)
+
+names(seasonalf) <- substr(names(seasonalf),
+                           1,
+                           nchar(names(seasonalf[1]))-15
+                           ) # Reduce end of string
+
+#Separate out the seasons foreach parallel
+# create boolean for where condition is TRUE
+condWI <- sapply(seasonalf, function(x) any("WI" %in% x$season))
+condCA <- sapply(seasonalf, function(x) any("CA" %in% x$season))
+condSU <- sapply(seasonalf, function(x) any("SU" %in% x$season))
+condRU <- sapply(seasonalf, function(x) any("RU" %in% x$season))
+
+Winterpar <- seasonalf[condWI]
+Calvingpar <- seasonalf[condCA]
+Summerpar <- seasonalf[condSU]
+Ruttingpar <- seasonalf[condRU]
+
+## Winter
+#create the cluster
+n.cores <- parallel::detectCores() - 1
+my.cluster <- parallel::makeCluster(
+  n.cores, 
+  type = "PSOCK"
+  )
+
+#register it to be used by %dopar%
+doParallel::registerDoParallel(cl = my.cluster)
+
+# Perform the operations in parallel
+Winterpar_list <- foreach(i = 1:length(Winterpar),
+                          .combine = c,
+                          .packages = "adehabitatHR") %:%
+                          when(nrow(Winterpar[[i]]@data) > 5) %dopar% {
+                    
+                          kernelUD(Winterpar[[i]],
+                              h=h,
+                              kern="bivnorm",
+                              grid=grid,
+                              extent=extent)
+                          }
+Winterpar <- Filter(function(x) length(x) > 5, Winterpar) ## This could have been done prior
+names(Winterpar_list) <- names(Winterpar)
+
+# Stop the parallel backend
+stopCluster(my.cluster)
+
+## Calving
+#create the cluster
+n.cores <- parallel::detectCores() - 1
+my.cluster <- parallel::makeCluster(
+  n.cores, 
+  type = "PSOCK"
+  )
+
+#register it to be used by %dopar%
+doParallel::registerDoParallel(cl = my.cluster)
+
+# Perform the operations in parallel
+Calvingpar_list <- foreach(i = 1:length(Calvingpar),
+                          .combine = c,
+                          .packages = "adehabitatHR") %:%
+                          when(nrow(Calvingpar[[i]]@data) > 5) %dopar% {
+                    
+                          kernelUD(Calvingpar[[i]],
+                              h=h,
+                              kern="bivnorm",
+                              grid=grid,
+                              extent=extent)
+                   }
+Calvingpar <- Filter(function(x) length(x) > 5, Calvingpar) ## This could have been done prior
+names(Calvingpar_list) <- names(Calvingpar)
+
+# Stop the parallel backend
+stopCluster(my.cluster)
+
+## Summer
+#create the cluster
+n.cores <- parallel::detectCores() - 1
+my.cluster <- parallel::makeCluster(
+  n.cores, 
+  type = "PSOCK"
+  )
+
+#register it to be used by %dopar%
+doParallel::registerDoParallel(cl = my.cluster)
+
+# Perform the operations in parallel
+Summerpar_list <- foreach(i = 1:length(Summerpar),
+                          .combine = c,
+                          .packages = "adehabitatHR") %:%
+                          when(nrow(Summerpar[[i]]@data) > 5) %dopar% {
+                    
+                          kernelUD(Summerpar[[i]],
+                              h=h,
+                              kern="bivnorm",
+                              grid=grid,
+                              extent=extent)
+                   }
+Summerpar <- Filter(function(x) length(x) > 5, Summerpar) ## This could have been done prior
+names(Summerpar_list) <- names(Summerpar)
+
+# Stop the parallel backend
+stopCluster(my.cluster)
+
+## Rutting
+#create the cluster
+n.cores <- parallel::detectCores() - 1
+my.cluster <- parallel::makeCluster(
+  n.cores, 
+  type = "PSOCK"
+  )
+
+#register it to be used by %dopar%
+doParallel::registerDoParallel(cl = my.cluster)
+
+# Perform the operations in parallel
+Ruttingpar_list <- foreach(i = 1:length(Ruttingpar),
+                          .combine = c,
+                          .packages = "adehabitatHR") %:%
+                          when(nrow(Ruttingpar[[i]]@data) > 5) %dopar% {
+                    
+                          kernelUD(Ruttingpar[[i]],
+                              h=h,
+                              kern="bivnorm",
+                              grid=grid,
+                              extent=extent)
+                          }
+Ruttingpar <- Filter(function(x) length(x) > 5, Ruttingpar) ## This could have been done prior
+names(Ruttingpar_list) <- names(Ruttingpar)
+
+# Stop the parallel backend
+stopCluster(my.cluster)
+
+# Calculate the vertices
+verWI <- lapply(Winterpar_list, getverticeshr, percent=per)
+verCA <- lapply(Calvingpar_list, getverticeshr, percent=per)
+verSU <- lapply(Summerpar_list, getverticeshr, percent=per)
+verRU <- lapply(Ruttingpar_list, getverticeshr, percent=per)
+
+ver <- c(verWI,verCA,verSU,verRU)
+
+# Save the Vertices's
+for(i in 1:length(ver)){
+  writeVector(vect(ver[[i]]), paste0(here("adeHRoutput_noclip","Seasons"),"/",names(ver[i]),"_",per,"_",h,"4S.shp"), overwrite=TRUE)
+}
+
+# Load the Vertices's
+ver <- list()
+ver_UDdir <- gsub(".shp",
+                    "",
+                    dir(here("adeHRoutput_noclip","Seasons")
+                    ,pattern=".shp$"))
+ver_UDdir <- substr(ver_UDdir,1,14)
+
+ver_UDdirF <- dir(here("adeHRoutput_noclip","Seasons"),
+                 pattern=".shp$",
+                 full.names = TRUE)
+                    
+ver <- lapply(ver_UDdirF,
+                  FUN = function(files) {
+                    vect(files)
+                  })
+
+names(ver) <- ver_UDdir
+
+```
+
+
+names(seasonsUD) <- season_UDdir
+
+
+```{r, eval=FALSE}
+
+# Tabulate the areas and write the vector UD results.
+TabUD_area <- data.frame(matrix(ncol=5))
+colnames(TabUD_area) <- c("SA", "season", "year", "area", "nb.reloc")
+UD_area <- list()
+
+# Get the names in order and reduce for any lost on the >5 condition:
+ver <- ver[order(names(ver))]
+seasonalf <- seasonalf[names(seasonalf) %in% names(ver) == TRUE]
+
+for(i in 1:length(ver)){
+  UD_area[[i]] = ver[[i]]$area
+  TabUD_area[i,c(1:5)] <- rbind(data.frame(SA =substr(names(ver[i]),1,2), season = substr(names(ver[i]),13,14), year = substr(names(ver[i]),8,11), area = UD_area[[i]], nb.reloc = length(seasonalf[[i]])))  
+}
+
+write.csv(TabUD_area, paste0(here("adeHRoutput_noclip","Seasons"), "/Agg_UD_areas.csv", sep=""), row.names = FALSE)
+TabUD_area <- read.csv(file = paste0(here("adeHRoutput_noclip","Seasons"), "/Agg_UD_areas.csv"))
+
+TabUD_area_TR_WI <- TabUD_area[which(TabUD_area$season == "WI" & TabUD_area$SA == "TR"),]
+TabUD_area_TR_CA <- TabUD_area[which(TabUD_area$season == "CA" & TabUD_area$SA == "TR"),]
+TabUD_area_TR_SU <- TabUD_area[which(TabUD_area$season == "SU" & TabUD_area$SA == "TR"),]
+TabUD_area_TR_RU <- TabUD_area[which(TabUD_area$season == "RU" & TabUD_area$SA == "TR"),]
+TabUD_area_BM_WI <- TabUD_area[which(TabUD_area$season == "WI" & TabUD_area$SA == "BM"),]
+TabUD_area_BM_CA <- TabUD_area[which(TabUD_area$season == "CA" & TabUD_area$SA == "BM"),]
+TabUD_area_BM_SU <- TabUD_area[which(TabUD_area$season == "SU" & TabUD_area$SA == "BM"),]
+TabUD_area_BM_RU <- TabUD_area[which(TabUD_area$season == "RU" & TabUD_area$SA == "BM"),]
+
+par(mfrow=c(2,2))
+plot(x = TabUD_area_TR_WI$nb.reloc, y = TabUD_area_TR_WI$area, xlab="Sample Size", ylab = expression("UD Area m"^2), main = "Roman Winter")
+plot(x = TabUD_area_TR_CA$nb.reloc, y = TabUD_area_TR_CA$area, xlab="Sample Size", ylab = expression("UD Area m"^2), main = "Roman Calving")
+plot(x = TabUD_area_TR_SU$nb.reloc, y = TabUD_area_TR_SU$area, xlab="Sample Size", ylab = expression("UD Area m"^2), main = "Roman Summer")
+plot(x = TabUD_area_TR_RU$nb.reloc, y = TabUD_area_TR_RU$area, xlab="Sample Size", ylab = expression("UD Area m"^2), main = "Roman Rutting")
+
+par(mfrow=c(2,2))
+plot(x = TabUD_area_BM_WI$nb.reloc, y = TabUD_area_BM_WI$area, xlab="Sample Size", ylab = expression("UD Area m"^2), main = "Bullmoose Winter")
+plot(x = TabUD_area_BM_CA$nb.reloc, y = TabUD_area_BM_CA$area, xlab="Sample Size", ylab = expression("UD Area m"^2), main = "Bullmoose Calving")
+plot(x = TabUD_area_BM_SU$nb.reloc, y = TabUD_area_BM_SU$area, xlab="Sample Size", ylab = expression("UD Area m"^2), main = "Bullmoose Summer")
+plot(x = TabUD_area_BM_RU$nb.reloc, y = TabUD_area_BM_RU$area, xlab="Sample Size", ylab = expression("UD Area m"^2), main = "Bullmoose Rutting")
+
+UD_area[[tally]] = ver$area
+
+```
+
