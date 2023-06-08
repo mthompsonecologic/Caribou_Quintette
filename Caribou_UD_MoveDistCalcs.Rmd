@@ -60,7 +60,7 @@ for(package.i in list.of.packages){
 
 ## Individual centroids
 
-This code chunk calculates the centriod of the BRB homerange estimation for each individual within year and season. These centroids are subsequently used to calculate the individual BRB distance to the aggregate centroid, by season and by year. It takes a large amount of cpu time to load in the individual shapefiles.
+This code chunk is written to calculate the centriod of the BRB homerange estimation for each individual within year and season. These centroids are subsequently used to calculate the individual BRB centroid distance to the aggregate centroid, by season and by year.
 
 ```{r , echo=FALSE, include = FALSE, message = FALSE, warning = FALSE, results = 'hide', fig.show = 'hide'}
 
@@ -153,6 +153,7 @@ Simple Euclidean linear distances are calculated here for winter data only. Wint
 ```{r echo=FALSE}
 
 ## Trend Roman
+# Subset to season (WI = Winter, CA = Calving, SU = Summer, RU = Rutting)
 TRWI_Centroids <- subset(TRcentroidL, subset = substr(names(TRcentroidL),3,4) == "WI")
 Years <- substr(names(TRBRB_centroidL),1,4)
 TRcdist <- data.frame()
@@ -167,6 +168,13 @@ for(i in 1:length(TRBRB_centroidL)){
 TRcdist$Years <- Years
 
 ## Bullmoose
+
+# This loop calculates the distance, in call to the pointDistance() function,
+# between the aggregate centroids in a list (= BMcentroidL) and the centroids
+# of the individual animal BRB home ranges in the winter across years. A faster
+# code design would be use of apply() functions, but loops were used in the
+# initial phase of coding. The coding across this project is updated to
+# use parallel processing where the steps are  considerably slowed down by loops.
 
 BMWI_Centroids <- subset(BMcentroidL, subset = substr(names(BMcentroidL),3,4) == "WI")
 Years <- substr(names(BMBRB_centroidL),1,4)
