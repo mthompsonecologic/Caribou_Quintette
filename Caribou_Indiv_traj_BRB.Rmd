@@ -1102,6 +1102,10 @@ WV <- function (x) {writeVector(x,
 
 sapply(BRBs_BM_RUv, FUN=WV, simplify=FALSE, USE.NAMES = TRUE)
 
+#See: https://bookdown.org/rdpeng/rprogdatascience/parallel-computation.html
+mcmapply(BRBs_BM_RUv, FUN=WV, simplify=FALSE, USE.NAMES = TRUE)
+
+
 # BRB metrics
 
 #create the cluster
@@ -1224,6 +1228,10 @@ sum(Traj_len)
 
 #create the cluster
 n.cores <- parallel::detectCores() - 10
+
+#ntasks = length(Traj_li)
+#ntasks_pc = round(ntasks/n.cores,down)
+
 my.cluster <- parallel::makeCluster(
   n.cores, 
   type = "PSOCK"
@@ -1264,7 +1272,21 @@ WV <- function (x) {writeVector(x,
                             thenames,".shp"),
                             overwrite=TRUE)}
 
-sapply(BRBs_TR_WIv, FUN=WV, simplify=FALSE, USE.NAMES = TRUE)
+#create the cluster
+n.cores <- parallel::detectCores() - 10
+my.cluster <- parallel::makeCluster(
+  n.cores, 
+  type = "PSOCK"
+  )
+
+#register it to be used by %dopar%
+doParallel::registerDoParallel(cl = my.cluster)
+
+#sapply(BRBs_TR_WIv, FUN=WV, simplify=FALSE, USE.NAMES = TRUE)
+mcmapply(BRBs_TR_WIv, FUN=WV, simplify=FALSE, USE.NAMES = TRUE, mc.cores = n.cores)
+
+# Stop the parallel backend
+stopCluster(my.cluster)
 
 # BRB metrics
 
