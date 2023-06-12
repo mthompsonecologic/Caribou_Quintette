@@ -35,6 +35,7 @@ This RMarkdown is designed to:
 list.of.packages <- c(
   "foreach",
   "doParallel",
+  "ggplot2",
   "here",
   "adehabitatLT",
   "adehabitatHR",
@@ -100,16 +101,21 @@ Caribou_TR <- Caribou_BMTR[which(Caribou_BMTR$SA == "TR"),]
 
 ## Bullmoose trajectories
 CaribouBM.ltraj <- as.ltraj(xy = Caribou_BM[,c("E", "N")], 
-                       date =  as.POSIXct(Caribou_BM$timestamp, format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
+                       date =  as.POSIXct(Caribou_BM$timestamp,
+                       format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
                        id = Caribou_BM$AnimalID, typeII = TRUE)
 
-total.path.df <- data.frame(CaribouBM.ltraj[[1]], id = attr(CaribouBM.ltraj[[1]], "id"))
+total.path.df <- data.frame(CaribouBM.ltraj[[1]],
+                            id = attr(CaribouBM.ltraj[[1]],
+                                      "id"))
 
 # Use a 'for' loop to fill the larger dataframe with the rest of the trajectories.
 for(i in 2:length(CaribouBM.ltraj)) {
-  total.path.df <- rbind(total.path.df, 
-                         data.frame(CaribouBM.ltraj[[i]], id = attr(CaribouBM.ltraj[[i]], "id")))
-}
+  total.path.df <- rbind(total.path.df,
+                         data.frame(CaribouBM.ltraj[[i]],
+                         id = attr(CaribouBM.ltraj[[i]],
+                         "id")))
+  }
 
 # Calculate distance traveled per day and add it to the dataframe
 total.path.df$distperday <- total.path.df$dist / (total.path.df$dt/60/60/24)
@@ -648,15 +654,16 @@ for(y in 1:length(Traj_len)){
 # Reduce the number of cores to save mem.
 # See: https://stackoverflow.com/questions/28503208/doparallel-error-in-r-error-#in-serializedata-nodecon-error-writing-to-con
 
-n.cores <- parallel::detectCores() - 10
+n.cores <- parallel::detectCores() - 1
 my.cluster <- parallel::makeCluster(
   n.cores, 
-  type = "PSOCK"
+  type = "FORK"
   )
 
 #register it to be used by %dopar%
 doParallel::registerDoParallel(cl = my.cluster)
 
+system.time({
 BRBs_BM_WI <- foreach(i = 1:length(Traj_li),
                       .combine = c,
                       .packages = c("adehabitatHR","adehabitatLT")) %dopar% {
@@ -668,32 +675,76 @@ BRBs_BM_WI <- foreach(i = 1:length(Traj_li),
                           type = "UD",
                           grid = 4000)
                       }
-
-# Stop the parallel backend
+	})
 stopCluster(my.cluster)
 
-## Save as shapefiles:
-# I struggled here to find a way to save with the names in the apply
-# functions. A work around was created by using 'thenames', otherwise
-# the files get saved as 'dens.shp'. I think the challenge is a property
-# of the adhabitatHR class that would have to be researched in its repo.
-
-names(BRBs_BM_WI) <- unlist(lapply(Traj_li, function (x) paste0(names(x),"_",id(x))))
-thenames <- unlist(lapply(Traj_li, function (x) paste0(names(x),"_",id(x))))
- 
-#BRBs_BM_WIv <- lapply(BRBs_BM_WI, function (x) {vect(x)})
-BRBs_BM_WIv <- mclapply(BRBs_BM_WI, function (x) {vect(x)}, mc.cores=n.cores)
-
-names(BRBs_BM_WIv) <- names(BM_WI_Traj)
+n.cores <- parallel::detectCores() - 1
+my.cluster <- parallel::makeCluster(
+  n.cores, 
+  type = "FORK"
+  )
+doParallel::registerDoParallel(cl = my.cluster)
+clusterExport(cl = my.cluster, BRBs_BM_WI)
+BRBs_BM_WIv <- parLapply(cl = my.cluster, BRBs_BM_WI, function (x) {vect(x)})
+stopCluster(my.cluster)
 
 WV <- function (x) {writeVector(x,
                             paste0(here("BRB_UDs"), "/",
                             thenames,".shp"),
                             overwrite=TRUE)}
 
+my.cluster <- parallel::makeCluster(
+  n.cores, 
+  type = "FORK"
+  )
+doParallel::registerDoParallel(cl = my.cluster)
+clusterExport(cl = my.cluster, BRBs_BM_WI)
+parLapply(cl=my.cluster, X = BRBs_BM_WIv, FUN = MV)
+stopCluster(my.cluster)
+
+###############################################################
+################################################################
+## Save as shapefiles:
+# I struggled here to find a way to save with the names in the apply
+# functions. A work around was created by using 'thenames', otherwise
+# the files get saved as 'dens.shp'. I think the challenge is a property
+# of the adhabitatHR class that would have to be researched in its repo.
+
+BRBs_BM_WIv <- mclapply(BRBs_BM_WI,function (x) {vect(x)}, mc.cores = n.cores)
+
+names(BRBs_BM_WI) <- unlist(lapply(Traj_li, function (x) paste0(names(x),"_",id(x))))
+thenames <- unlist(lapply(Traj_li, function (x) paste0(names(x),"_",id(x))))
+
+WV <- function (x) {writeVector(x,
+                            paste0(here("BRB_UDs"), "/",
+                            thenames,".shp"),
+                            overwrite=TRUE)}
+
+
+
 #sapply(BRBs_BM_WIv, FUN=WV, simplify=FALSE, USE.NAMES = TRUE)
 #See: https://bookdown.org/rdpeng/rprogdatascience/parallel-computation.html
-mcmapply(BRBs_BM_WIv, FUN=WV, simplify=FALSE, USE.NAMES = TRUE, mc.cores = n.cores)
+mclapply(X = BRBs_BM_WIv, FUN=WV, mc.cores = n.cores)
+
+# Write
+n.cores <- parallel::detectCores() - 1
+my.cluster <- parallel::makeCluster(
+  n.cores, 
+  type = "FORK"
+  )
+
+doParallel::registerDoParallel(cl = my.cluster)
+
+BRBs_BM_WIv <- foreach(i = 1:length(BRBs_BM_WI),
+                      .combine = c,
+                      .packages = "terra") %dopar% {
+                        vect(BRBs_BM_WI[i])
+                      }
+stopCluster(my.cluster)
+
+names(BRBs_BM_WIv) <- names(BM_WI_Traj)
+################################################################
+################################################################
 
 # BRB metrics
 
