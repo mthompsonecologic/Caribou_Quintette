@@ -45,13 +45,11 @@ list.of.packages <- c(
   "terra",
   "sf"
   )
-
 new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
 
 if(length(new.packages) > 0){
   install.packages(new.packages, dep=TRUE)
 }
-
 #loading packages
 for(package.i in list.of.packages){
   suppressPackageStartupMessages(
@@ -61,7 +59,6 @@ for(package.i in list.of.packages){
       )
     )
 }
-
 ```
 
 ############################################
@@ -92,7 +89,7 @@ Movement trajectories
 ```{r echo=FALSE}
 
 ##Caribou_Quintette2 <- read.csv(paste0(here("Input Data"), "/Caribou_July2022.csv"), stringsAsFactors = FALSE) # Old
-Caribou_BMTR <- read.csv("Input_Data/Caribou_noclip.csv")
+Caribou_BMTR <- read.csv("Caribou_noclip.csv")
 # Separating the data into two tables
 Caribou_BM <- Caribou_BMTR[which(Caribou_BMTR$SA == "BM"),]
 Caribou_TR <- Caribou_BMTR[which(Caribou_BMTR$SA == "TR"),]
@@ -655,7 +652,7 @@ for(y in 1:length(Traj_len)){
 # Reduce the number of cores to save mem.
 # See: https://stackoverflow.com/questions/28503208/doparallel-error-in-r-error-#in-serializedata-nodecon-error-writing-to-con
 
-n.cores <- parallel::detectCores() - 1
+n.cores <- parallel::detectCores() - 3
 my.cluster <- parallel::makeCluster(
   n.cores, 
   type = "FORK"
@@ -682,17 +679,26 @@ stopCluster(my.cluster)
 
 
 
-n.cores <- parallel::detectCores() - 1
+n.cores <- parallel::detectCores() - 3
 my.cluster <- parallel::makeCluster(
   n.cores, 
-  type = "FORK"
+  type = "FORK",
+  outfile="errors.txt" 
   )
 doParallel::registerDoParallel(cl = my.cluster)
-
+system.time({
+BRBs_BM_WIv <- foreach(i = 1:4,
+                      .combine = c,
+                      .packages = c("terra")) %dopar% {
+						  vect(brb[i])
+                      }
+	})
+stopCluster(my.cluster)
 # RAD __ ABOVE WORKS -- BELOW VARIOUS ATTEMPTS ___ goal is to get BRBs_BW_WI and save the it as an intermediary -- R max workerts is 125 (in practice less) -- SLURM: ntasks = nodes; cpus seems to be number of cores
 
-clusterExport(cl = my.cluster, BRBs_BM_WI)
-BRBs_BM_WIv <- parLapply(cl = my.cluster, BRBs_BM_WI, function (x) {vect(x)})
+# clusterExport(cl = my.cluster, BRBs_BM_WI)
+BRBs_BM_WIv <- parLapply(cl = my.cluster, BRBs_BM_WI, function (x) {vect(x[1])})
+BRBs_BM_WIv <- parLapply(cl = my.cluster, brb, vect)
 stopCluster(my.cluster)
 
 WV <- function (x) {writeVector(x,
@@ -706,7 +712,7 @@ my.cluster <- parallel::makeCluster(
   )
 doParallel::registerDoParallel(cl = my.cluster)
 clusterExport(cl = my.cluster, BRBs_BM_WI)
-parLapply(cl=my.cluster, X = BRBs_BM_WIv, FUN = MV)
+parLapply(cl=my.cluster, X = BRBs_BM_WIv, FUN = WV)
 stopCluster(my.cluster)
 
 ###############################################################

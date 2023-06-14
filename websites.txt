@@ -1,0 +1,14 @@
+https://cran.r-project.org/web/packages/foreach/vignettes/foreach.html
+https://dept.stat.lsa.umich.edu/~jerrick/courses/stat701/notes/parallel.html
+https://www.blasbenito.com/post/02_parallelizing_loops_with_r/
+https://www.youtube.com/watch?v=gzoD7DQ6i0k
+https://cran.r-project.org/web/packages/adehabitatHR/vignettes/adehabitatHR.pdf
+https://www.frontiersin.org/articles/10.3389/fevo.2018.00149/full
+https://stackoverflow.com/questions/65603381/slurm-nodes-tasks-cores-and-cpus#:~:text=From%20what%20I%20gathered%2C%20nodes,task%20assigned%20to%20that%20CPU.
+https://cran.r-project.org/web/packages/rslurm/vignettes/rslurm.html
+https://stackoverflow.com/questions/51139711/hpc-cluster-select-the-number-of-cpus-and-threads-in-slurm-sbatch
+https://cran.r-project.org/web/packages/rslurm/vignettes/rslurm.html
+https://stackoverflow.com/questions/75326677/checking-available-cores-in-r-on-slurm
+https://github.com/USCbiostats/slurmR
+https://docs.alliancecan.ca/wiki/Advanced_MPI_scheduling
+
