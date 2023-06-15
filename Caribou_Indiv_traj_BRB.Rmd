@@ -35,6 +35,9 @@ This RMarkdown is designed to:
 list.of.packages <- c(
   "foreach",
   "doParallel",
+  "future",
+  "future.apply",
+  "rslurm",
   "ggplot2",
   "here",
   "adehabitatLT",
@@ -127,6 +130,8 @@ path.summary$sd <- aggregate(distperday~id, data = total.path.df, FUN = sd)$dist
 # Look at summary dataframe
 path.summary
 
+########################################
+### ACENET Stop here - no ggplot needed.
 
 # Make a graph to visualize data using ggplot
 library(ggplot2)
@@ -507,7 +512,7 @@ for(l in 1:length(Caribou_TR_RU_LI)){
 ```
 
 
-Calculating BRB model inputs
+#Calculating BRB model inputs
 
 # D: diffusion parameter in m^2 / sec.
 
@@ -601,44 +606,44 @@ Note that Dr=c(2,7) is used in the likelihood estimate of the diffusion coeffici
 ############
 ## BM Winter
 ## D: diffusion parameter - using ML function:
-
-DLik_BM_WI <- list()
-tally = 1
-BM_WI_Traj <- BM_WI_Traj[order(names(BM_WI_Traj))]
-
-for(t in 1:length(BM_WI_Traj)){
-  DLik_BM_WI[[tally]] <- BRB.likD(BM_WI_Traj[[t]], Tmax=1500*60, Lmin=2,  Dr=c(2,7))
-  tally = tally + 1
-}
-
-names(DLik_BM_WI) <- names(BM_WI_Traj)
-names(DLik_BM_WI[1]) ##"BM_WI_2003"
-
-
-## DLik_...computes a list of each animal n = observations during the time interval [0,Ttotal], and D- diffusion parameter. See: Horne, J.S., Garton, E.O., Krone, S.M. and Lewis, J.S. 2007. Analyzing animal movements using Brownian bridges. Ecology, 88, 2354–235
-## These are contained in a list by year
-
-DLik_BM_WI_u <- unlist(DLik_BM_WI)
-DLik_BM_WI_u <- DLik_BM_WI_u[1:(length(DLik_BM_WI_u)/2)*2]
-DLik_BM_WI_u <- as.numeric(as.vector(DLik_BM_WI_u))
-
-Traj_len <- as.numeric(as.vector(lengths(BM_WI_Traj)))
-#> Traj_len
-# [1]  2  2  5  5  8  7 11  6 10  5  6  5 10 10 11 16 11 12  8
-
-Traj_li <- vector("list", length(DLik_BM_WI_u))
-a = 1
-b = 1
-
-for(y in 1:length(Traj_len)){
-    b = 1
-    while(b <= Traj_len[y]){
-        Traj_li[[a]] <- BM_WI_Traj[[y]][b]
-        names(Traj_li[[a]])  <- names(BM_WI_Traj[y])
-        b = b + 1
-        a = a + 1
-        }
-    }
+  
+  DLik_BM_WI <- list()
+  tally = 1
+  BM_WI_Traj <- BM_WI_Traj[order(names(BM_WI_Traj))]
+  
+  for(t in 1:length(BM_WI_Traj)){
+    DLik_BM_WI[[tally]] <- BRB.likD(BM_WI_Traj[[t]], Tmax=1500*60, Lmin=2,  Dr=c(2,7))
+    tally = tally + 1
+  }
+  
+  names(DLik_BM_WI) <- names(BM_WI_Traj)
+  names(DLik_BM_WI[1]) ##"BM_WI_2003"
+  
+  
+  ## DLik_...computes a list of each animal n = observations during the time interval [0,Ttotal], and D- diffusion parameter. See: Horne, J.S., Garton, E.O., Krone, S.M. and Lewis, J.S. 2007. Analyzing animal movements using Brownian bridges. Ecology, 88, 2354–235
+  ## These are contained in a list by year
+  
+  DLik_BM_WI_u <- unlist(DLik_BM_WI)
+  DLik_BM_WI_u <- DLik_BM_WI_u[1:(length(DLik_BM_WI_u)/2)*2]
+  DLik_BM_WI_u <- as.numeric(as.vector(DLik_BM_WI_u))
+  
+  Traj_len <- as.numeric(as.vector(lengths(BM_WI_Traj)))
+  #> Traj_len
+  # [1]  2  2  5  5  8  7 11  6 10  5  6  5 10 10 11 16 11 12  8
+  
+  Traj_li <- vector("list", length(DLik_BM_WI_u))
+  a = 1
+  b = 1
+  
+  for(y in 1:length(Traj_len)){
+      b = 1
+      while(b <= Traj_len[y]){
+          Traj_li[[a]] <- BM_WI_Traj[[y]][b]
+          names(Traj_li[[a]])  <- names(BM_WI_Traj[y])
+          b = b + 1
+          a = a + 1
+          }
+      }
 
 # Note to understand resultant data structure:
 #sum(lengths(DLik_BM_WI))
@@ -654,7 +659,9 @@ for(y in 1:length(Traj_len)){
 # Reduce the number of cores to save mem.
 # See: https://stackoverflow.com/questions/28503208/doparallel-error-in-r-error-#in-serializedata-nodecon-error-writing-to-con
 
-n.cores <- parallel::detectCores() - 1
+thenames <- unlist(lapply(Traj_li, function (x) paste0(names(x),"_",id(x))))
+  
+n.cores <- as.vector(future::availableCores()) - 1
 my.cluster <- parallel::makeCluster(
   n.cores, 
   type = "FORK"
@@ -667,143 +674,77 @@ system.time({
 BRBs_BM_WI <- foreach(i = 1:length(Traj_li),
                       .combine = c,
                       .packages = c("adehabitatHR","adehabitatLT")) %dopar% {
-                          BRB(Traj_li[[i]][1],
+                          saveRDS(BRB(Traj_li[[i]][1],
                           D = DLik_BM_WI_u[i],
                           Tmax = 1500*60,
                           Lmin = 2,
                           hmin = 20,
                           type = "UD",
-                          grid = 4000)
+                          grid = 4000),paste0(here("BRB_UDs"),"/",thenames[i],".Rds"))
                       }
 	})
 stopCluster(my.cluster)
 
-n.cores <- parallel::detectCores() - 1
-my.cluster <- parallel::makeCluster(
-  n.cores, 
-  type = "FORK"
-  )
-doParallel::registerDoParallel(cl = my.cluster)
-clusterExport(cl = my.cluster, BRBs_BM_WI)
-BRBs_BM_WIv <- parLapply(cl = my.cluster, BRBs_BM_WI, function (x) {vect(x)})
-stopCluster(my.cluster)
-
-WV <- function (x) {writeVector(x,
-                            paste0(here("BRB_UDs"), "/",
-                            thenames,".shp"),
-                            overwrite=TRUE)}
-
-my.cluster <- parallel::makeCluster(
-  n.cores, 
-  type = "FORK"
-  )
-doParallel::registerDoParallel(cl = my.cluster)
-clusterExport(cl = my.cluster, BRBs_BM_WI)
-parLapply(cl=my.cluster, X = BRBs_BM_WIv, FUN = MV)
-stopCluster(my.cluster)
-
-###############################################################
-################################################################
-## Save as shapefiles:
-# I struggled here to find a way to save with the names in the apply
-# functions. A work around was created by using 'thenames', otherwise
-# the files get saved as 'dens.shp'. I think the challenge is a property
-# of the adhabitatHR class that would have to be researched in its repo.
-
-BRBs_BM_WIv <- mclapply(BRBs_BM_WI,function (x) {vect(x)}, mc.cores = n.cores)
-
-names(BRBs_BM_WI) <- unlist(lapply(Traj_li, function (x) paste0(names(x),"_",id(x))))
-thenames <- unlist(lapply(Traj_li, function (x) paste0(names(x),"_",id(x))))
-
-WV <- function (x) {writeVector(x,
-                            paste0(here("BRB_UDs"), "/",
-                            thenames,".shp"),
-                            overwrite=TRUE)}
-
-
-
-#sapply(BRBs_BM_WIv, FUN=WV, simplify=FALSE, USE.NAMES = TRUE)
-#See: https://bookdown.org/rdpeng/rprogdatascience/parallel-computation.html
-mclapply(X = BRBs_BM_WIv, FUN=WV, mc.cores = n.cores)
-
-# Write
-n.cores <- parallel::detectCores() - 1
-my.cluster <- parallel::makeCluster(
-  n.cores, 
-  type = "FORK"
-  )
-
-doParallel::registerDoParallel(cl = my.cluster)
-
-BRBs_BM_WIv <- foreach(i = 1:length(BRBs_BM_WI),
-                      .combine = c,
-                      .packages = "terra") %dopar% {
-                        vect(BRBs_BM_WI[i])
-                      }
-stopCluster(my.cluster)
-
-names(BRBs_BM_WIv) <- names(BM_WI_Traj)
-################################################################
 ################################################################
 
 # BRB metrics
+# Read in the files
+
+BRBs_BM_WIf <- list.files(here("BRB_UDs"),
+                 pattern="\\.Rds$",
+                 full.names=TRUE)
+
+BRBs_BM_WI <- lapply(BRBs_BM_WIf, function(x){readRDS(x)})
 
 #create the cluster
-
-n.cores <- parallel::detectCores() - 10
+n.cores <- as.vector(future::availableCores()) - 1
 my.cluster <- parallel::makeCluster(
   n.cores, 
-  type = "PSOCK"
+  type = "FORK"
   )
 
 #register it to be used by %dopar%
 doParallel::registerDoParallel(cl = my.cluster)
 
 ## vud has to be run on ACENET. Memory requirements too high.
+system.time({
 vud <- foreach(i = 1:length(BRBs_BM_WI),
                       .combine = c,
                       .packages = c("adehabitatHR","adehabitatLT")) %dopar% {
-                      getvolumeUD(BRBs_BM_WI[[i]])    
-                      }
+                      saveRDS(getvolumeUD(BRBs_BM_WI[[i]]),
+                              paste0(here("BRB_UDs","/",thenames,"_vud.Rds")))
+                        }    
+	})
 
 #Stop the parallel backend
  stopCluster(my.cluster)
 
-WVvol <- function (x) {writeVector(x,
-                            paste0(here("BRB_UDs"), "/",
-                            thenames,"vud.shp"),
-                            overwrite=TRUE)}
+#BRBs_BM_WIf <- list.files(here("BRB_UDs"),
+#                 pattern="\\.Rds$",
+#                 full.names=TRUE)
 
-#sapply(vud, FUN=WVvol, simplify=FALSE, USE.NAMES = TRUE)
-mcmapply(vud, FUN=WVvol, simplify=FALSE, USE.NAMES = TRUE, mc.cores = n.cores)
+#BRBs_BM_WI <- lapply(BRBs_BM_WIf, function(x){readRDS(x)})
 
 #Area cluster
-n.cores <- parallel::detectCores() - 12
+n.cores <- as.vector(future::availableCores()) - 1
 my.cluster <- parallel::makeCluster(
   n.cores, 
-  type = "PSOCK"
+  type = "FORK"
   )
 
 #register it to be used by %dopar%
 doParallel::registerDoParallel(cl = my.cluster)
 
+system.time({
 homerange <- foreach(i = 1:length(BRBs_BM_WI),
                       .combine = c,
                       .packages = c("adehabitatHR")) %dopar% {
-                      getverticeshr.estUD(BRBs_BM_WI[[i]])    
-                      }
-
+                      saveRDS(getverticeshr.estUD(BRBs_BM_WI[[i]]),
+                              paste0(here("BRB_UDs","/",thenames,"_hr.Rds")))
+                        }    
+	})
 # Stop the parallel backend
 stopCluster(my.cluster)
-
-# Save
-WVver <- function (x) {writeVector(x,
-                            paste0(here("BRB_UDs"), "/",
-                            thenames,"ver.shp"),
-                            overwrite=TRUE)}
-
-#sapply(homerange, FUN=WVver, simplify=FALSE, USE.NAMES = TRUE)
-mcmapply(homerange, FUN=WVver, simplify=FALSE, USE.NAMES = TRUE, mc.cores = n.cores)
 
 #############
 ## BM Calving
@@ -1313,14 +1254,29 @@ stopCluster(my.cluster)
 
 names(BRBs_TR_WI) <- unlist(lapply(Traj_li, function (x) paste0(names(x),"_",id(x))))
 thenames <- unlist(lapply(Traj_li, function (x) paste0(names(x),"_",id(x))))
+
+n.cores <- parallel::detectCores() - 1
+my.cluster <- parallel::makeCluster(
+  n.cores, 
+  type = "FORK"  ## fork gives Bus error!!
+  )
+doParallel::registerDoParallel(cl = my.cluster)
+
+foreach(i = 1:length(thenames),
+        .combine = c) %dopar% {
+          saveRDS(BRBs_BM_WI[[i]],
+                  paste0(here("BRB_UDs"),"/",thenames[i],".Rds"))}
+
+
  
 BRBs_TR_WIv <- lapply(BRBs_TR_WI, function (x) vect(x))
 names(BRBs_TR_WIv) <- names(TR_WI_Traj)
 
-WV <- function (x) {writeVector(x,
+WRds <- function (x) {saveRDS(x,
                             paste0(here("BRB_UDs"), "/",
-                            thenames,".shp"),
-                            overwrite=TRUE)}
+                            thenames,".Rds"))
+                            }
+BRBs_BM_WIv <- slurm_map(BRBs_BM_WI, f=WRds, nodes=2, cpus_per_node = 1)
 
 #create the cluster
 n.cores <- parallel::detectCores() - 10
@@ -1334,7 +1290,10 @@ doParallel::registerDoParallel(cl = my.cluster)
 
 #sapply(BRBs_TR_WIv, FUN=WV, simplify=FALSE, USE.NAMES = TRUE)
 #See: https://bookdown.org/rdpeng/rprogdatascience/parallel-computation.html
-mcmapply(BRBs_TR_WIv, FUN=WV, simplify=FALSE, USE.NAMES = TRUE, mc.cores = n.cores)
+#mcmapply(BRBs_TR_WIv, FUN=WV, simplify=FALSE, USE.NAMES = TRUE, mc.cores = n.cores)
+
+saveRDS(mtcars, "mtcars.rds")
+
 
 # Stop the parallel backend
 stopCluster(my.cluster)
