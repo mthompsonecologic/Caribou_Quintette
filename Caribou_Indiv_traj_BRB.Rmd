@@ -652,19 +652,18 @@ Note that Dr=c(2,7) is used in the likelihood estimate of the diffusion coeffici
 #[1] 150
 
 ## The BRBs_BM_WI need to be named. The names are contained here:
+thenames <- unlist(lapply(Traj_li, function (x) paste0(names(x),"_",id(x))))
 
 # BRB calculation
 
 #create the cluster
-# Reduce the number of cores to save mem.
+# One local machine, reduce the number of cores to save mem.
 # See: https://stackoverflow.com/questions/28503208/doparallel-error-in-r-error-#in-serializedata-nodecon-error-writing-to-con
 
-thenames <- unlist(lapply(Traj_li, function (x) paste0(names(x),"_",id(x))))
-  
 n.cores <- as.vector(future::availableCores()) - 1
 my.cluster <- parallel::makeCluster(
   n.cores, 
-  type = "FORK"
+  type = "PSOCK"
   )
 
 #register it to be used by %dopar%
@@ -681,11 +680,8 @@ BRBs_BM_WI <- foreach(i = 1:length(Traj_li),
                           hmin = 20,
                           type = "UD",
                           grid = 4000),paste0(here("BRB_UDs"),"/",thenames[i],".Rds"))
-                      }
-	})
+                      }})
 stopCluster(my.cluster)
-
-################################################################
 
 # BRB metrics
 # Read in the files
@@ -694,57 +690,52 @@ BRBs_BM_WIf <- list.files(here("BRB_UDs"),
                  pattern="\\.Rds$",
                  full.names=TRUE)
 
+# BRB metric vertices
+
+# future approach
+plan(multicore)
 BRBs_BM_WI <- lapply(BRBs_BM_WIf, function(x){readRDS(x)})
+system.time(BRBs_BM_WIv <- future_lapply(BRBs_BM_WI,
+                                         FUN = function(x) {
+                                           getverticeshr.estUD(x)
+                                           }))
 
-#create the cluster
-n.cores <- as.vector(future::availableCores()) - 1
+
+### parallel approach
+n.cores <- as.vector(future::availableCores())
 my.cluster <- parallel::makeCluster(
   n.cores, 
-  type = "FORK"
+  type = "FORK" ## Attempting fork for nodes > 1
   )
 
 #register it to be used by %dopar%
 doParallel::registerDoParallel(cl = my.cluster)
 
-## vud has to be run on ACENET. Memory requirements too high.
-system.time({
-vud <- foreach(i = 1:length(BRBs_BM_WI),
-                      .combine = c,
-                      .packages = c("adehabitatHR","adehabitatLT")) %dopar% {
-                      saveRDS(getvolumeUD(BRBs_BM_WI[[i]]),
-                              paste0(here("BRB_UDs","/",thenames,"_vud.Rds")))
-                        }    
-	})
-
-#Stop the parallel backend
- stopCluster(my.cluster)
-
-#BRBs_BM_WIf <- list.files(here("BRB_UDs"),
-#                 pattern="\\.Rds$",
-#                 full.names=TRUE)
-
-#BRBs_BM_WI <- lapply(BRBs_BM_WIf, function(x){readRDS(x)})
-
-#Area cluster
-n.cores <- as.vector(future::availableCores()) - 1
-my.cluster <- parallel::makeCluster(
-  n.cores, 
-  type = "FORK"
-  )
-
-#register it to be used by %dopar%
-doParallel::registerDoParallel(cl = my.cluster)
+BRBs_BM_WI <- lapply(BRBs_BM_WIf, function(x){readRDS(x)})
 
 system.time({
 homerange <- foreach(i = 1:length(BRBs_BM_WI),
                       .combine = c,
-                      .packages = c("adehabitatHR")) %dopar% {
+                      .packages = c("adehabitatHR","here")) %dopar% {
                       saveRDS(getverticeshr.estUD(BRBs_BM_WI[[i]]),
-                              paste0(here("BRB_UDs","/",thenames,"_hr.Rds")))
+                              paste0(here("BRB_UDs","BM","WI"),"/",thenames[i],"_hr.Rds"))
                         }    
 	})
 # Stop the parallel backend
 stopCluster(my.cluster)
+
+
+
+system.time(for(i in 1:length(thenames)){
+	vect(BRBs_BM_WIv[i],paste0(here("BRB_UDs","BM","WI"),"/",thenames[i],"_hr.Rds"))
+  homerangedf <- as.data.frame(BRBs_BM_WIv[i])
+  BRB_area[i,c(1:4)] <- rbind(data.frame(id = name_burst[[i]], year = substr(names(BM_WI_Traj[i]),7,11), area = homerangedf[,2], nb.reloc = nrow(BM_WI_Traj[[i]][[1]])))
+     })
+
+
+write.csv(BRB_area, paste0(here("BRB_UDs"), "/BM_WI_BRB_areas.csv", sep=""), row.names = FALSE)
+
+
 
 #############
 ## BM Calving
@@ -797,90 +788,28 @@ doParallel::registerDoParallel(cl = my.cluster)
 
 BRBs_BM_CA <- foreach(i = 1:length(Traj_li),
                       .combine = c,
-                      .packages = c("adehabitatHR","adehabitatLT")) %dopar% {
-                          BRB(Traj_li[[i]][1],
+                      .packages = c("adehabitatHR","adehabitatLT", "here")) %dopar% {
+                          saveRDS(BRB(Traj_li[[i]][1],
                           D = DLik_BM_CA_u[i],
                           Tmax = 1500*60,
                           Lmin = 2,
                           hmin = 20,
                           type = "UD",
-                          grid = 4000)
+                          grid = 4000),paste0(here("BRB_UDs"),"/",thenames[i],".Rds"))
                       }
 
 # Stop the parallel backend
 stopCluster(my.cluster)
 
-## Save as shapefiles:
 
-names(BRBs_BM_CA) <- unlist(lapply(Traj_li, function (x) paste0(names(x),"_",id(x))))
-thenames <- unlist(lapply(Traj_li, function (x) paste0(names(x),"_",id(x))))
- 
-BRBs_BM_CAv <- lapply(BRBs_BM_CA, function (x) vect(x))
-names(BRBs_BM_CAv) <- names(BM_CA_Traj)
+# BRB metric vertices
+plan(multicore)
+BRBs_BM_WI <- lapply(BRBs_BM_WIf, function(x){readRDS(x)})
+system.time(BRBs_BM_WIv <- future_lapply(BRBs_BM_CA, FUN = function(x) {getverticeshr.estUD(x)}))
+system.time(for(i in 1:length(thenames)){
+	vect(BRBs_BM_CAv[i],paste0(here("BRB_UDs"),"/",thenames[i],"_hr.Rds"))
+     })
 
-WV <- function (x) {writeVector(x,
-                            paste0(here("BRB_UDs"), "/",
-                            thenames,".shp"),
-                            overwrite=TRUE)}
-
-sapply(BRBs_BM_CAv, FUN=WV, simplify=FALSE, USE.NAMES = TRUE)
-
-# BRB metrics
-
-#create the cluster
-
-n.cores <- parallel::detectCores() - 10
-my.cluster <- parallel::makeCluster(
-  n.cores, 
-  type = "PSOCK"
-  )
-
-#register it to be used by %dopar%
-doParallel::registerDoParallel(cl = my.cluster)
-
-## vud has to be run on ACENET. Memory requirements too high.
-vud <- foreach(i = 1:length(BRBs_BM_CA),
-                      .combine = c,
-                      .packages = c("adehabitatHR","adehabitatLT")) %dopar% {
-                      getvolumeUD(BRBs_BM_CA[[i]])    
-                      }
-# Stop the parallel backend
-stopCluster(my.cluster)
-
-# Save
-WVvol <- function (x) {writeVector(x,
-                            paste0(here("BRB_UDs"), "/",
-                            thenames,"vud.shp"),
-                            overwrite=TRUE)}
-
-sapply(vud, FUN=WVvol, simplify=FALSE, USE.NAMES = TRUE)
-
-#Area cluster
-n.cores <- parallel::detectCores() - 10
-my.cluster <- parallel::makeCluster(
-  n.cores, 
-  type = "PSOCK"
-  )
-
-#register it to be used by %dopar%
-doParallel::registerDoParallel(cl = my.cluster)
-
-homerange <- foreach(i = 1:length(BRBs_BM_CA),
-                      .combine = c,
-                      .packages = c("adehabitatHR")) %dopar% {
-                      getverticeshr.estUD(BRBs_BM_CA[[i]])    
-                      }
-
-# Stop the parallel backend
-stopCluster(my.cluster)
-
-# Save
-WVver <- function (x) {writeVector(x,
-                            paste0(here("BRB_UDs"), "/",
-                            thenames,"ver.shp"),
-                            overwrite=TRUE)}
-
-sapply(homerange, FUN=WVver, simplify=FALSE, USE.NAMES = TRUE)
 
 ############
 ## BM Summer
@@ -1218,11 +1147,7 @@ for(y in 1:length(Traj_len)){
 # BRB calculation
 
 #create the cluster
-n.cores <- parallel::detectCores() - 10
-
-#ntasks = length(Traj_li)
-#ntasks_pc = round(ntasks/n.cores,down)
-
+n.cores <- future::availableCores() - 1
 my.cluster <- parallel::makeCluster(
   n.cores, 
   type = "PSOCK"
@@ -1304,7 +1229,7 @@ stopCluster(my.cluster)
 #Reduce the number of cores to save mem.
 # See: https://stackoverflow.com/questions/28503208/doparallel-error-in-r-error-in-serializedata-nodecon-error-writing-to-con
 
-n.cores <- parallel::detectCores() - 10
+  n.cores <- parallel::detectCores() - 10
 my.cluster <- parallel::makeCluster(
   n.cores, 
   type = "PSOCK"
@@ -1785,7 +1710,8 @@ BRB_area[tally,c(1:4)] <- rbind(data.frame(id = name_burst[[tally]], year = subs
    tally = tally + 1
   }
 }
-
+homerangedf <- as.data.frame(homerange)
+   BRB_area[tally,c(1:4)] <- rbind(data.frame(id = name_burst[[tally]], year = substr(names(BM_WI_Traj[i]),7,11), area = homerangedf[,2], nb.reloc = nrow(BM_WI_Traj[[i]][[x]])))
 write.csv(BRB_area, paste0(here("BRB_UDs"), "/BM_WI_BRB_areas.csv", sep=""), row.names = FALSE)
 
 
