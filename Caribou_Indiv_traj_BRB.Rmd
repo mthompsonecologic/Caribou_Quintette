@@ -603,6 +603,15 @@ Note that Dr=c(2,7) is used in the likelihood estimate of the diffusion coeffici
 
 ```{r echo=FALSE}
 
+## BM WI 150 animals
+## BM CA n ?
+## BM SU
+## BM RU
+## TR WI
+## TR CA
+## TR SU
+## TR RU
+
 ############
 ## BM Winter
 ## D: diffusion parameter - using ML function:
@@ -655,8 +664,9 @@ Note that Dr=c(2,7) is used in the likelihood estimate of the diffusion coeffici
 thenames <- unlist(lapply(Traj_li, function (x) paste0(names(x),"_",id(x))))
 
 # BRB calculation
+# Calculates a Brownian Random Bridge home range.
 
-#create the cluster
+# create the cluster
 # One local machine, reduce the number of cores to save mem.
 # See: https://stackoverflow.com/questions/28503208/doparallel-error-in-r-error-#in-serializedata-nodecon-error-writing-to-con
 
@@ -683,23 +693,36 @@ BRBs_BM_WI <- foreach(i = 1:length(Traj_li),
                       }})
 stopCluster(my.cluster)
 
-# BRB metrics
+# Now we calculate the BRB metrics
 # Read in the files
 
 BRBs_BM_WIf <- list.files(here("BRB_UDs"),
                  pattern="\\.Rds$",
                  full.names=TRUE)
 
-# BRB metric vertices
+######################
+# BRB metric: Vertices
+# This is the extraction of the home-range contours
+# I want the 50% home range contour, which is
+# considered the core home range. If time, we can also
+# set percent=95, as this is usually considered to be
+# the accepted home range. In my original run, I realize
+# now that I was doing it for every percent as I did
+# not specify the percent = x, yikes! However,
+# even with one contour estimate it takes a lot of memory.
+######################
+
+## I believe you can use either the future or
+## the parallel approach, both worked. The future
+## approach ran faster.
 
 # future approach
 plan(multicore)
 BRBs_BM_WI <- lapply(BRBs_BM_WIf, function(x){readRDS(x)})
 system.time(BRBs_BM_WIv <- future_lapply(BRBs_BM_WI,
                                          FUN = function(x) {
-                                           getverticeshr.estUD(x)
+                                           getverticeshr.estUD(x, percent=50)
                                            }))
-
 
 ### parallel approach
 n.cores <- as.vector(future::availableCores())
@@ -717,26 +740,75 @@ system.time({
 homerange <- foreach(i = 1:length(BRBs_BM_WI),
                       .combine = c,
                       .packages = c("adehabitatHR","here")) %dopar% {
-                      saveRDS(getverticeshr.estUD(BRBs_BM_WI[[i]]),
+                      saveRDS(getverticeshr.estUD(BRBs_BM_WI[[i]], percent=50),
                               paste0(here("BRB_UDs","BM","WI"),"/",thenames[i],"_hr.Rds"))
                         }    
 	})
 # Stop the parallel backend
 stopCluster(my.cluster)
 
+######################
+# BRB metric: getvolumeUD
+# Description from adehabitat package:
+# The function getvolumeUD modifies the UD component
+# of the object passed as argument: that the pixel
+# values of the resulting object are equal to the
+# percentage of the smallest homerange containing
+# this pixel. This function is used in the function
+# kernel.area, to compute the home-range size.
+# Note, that the function plot.hrsize (see the help
+# page of this function) can be used to display the
+# home-range size estimated at various levels.
+######################
 
+#create the cluster
+
+n.cores <- as.vector(future::availableCores())
+my.cluster <- parallel::makeCluster(
+  n.cores, 
+  type = "PSOCK"
+  )
+
+#register it to be used by %dopar%
+doParallel::registerDoParallel(cl = my.cluster)
+
+## This currently saves as a spatVector:
+vud <- foreach(i = 1:length(BRBs_BM_WI),
+                      .combine = c,
+                      .packages = c("adehabitatHR","here","terra")) %dopar% {
+                        vect(getvolumeUD(BRBs_BM_WI[[i]]),
+                                paste0(here("BRB_UDs","BM","WI"),"/",
+                                thenames[i],"_vUD.shp"))    
+                      }
+
+# Stop the parallel backend
+stopCluster(my.cluster)
+
+# This part I had working for my big for loop.
+# It needs to be fixed for the individual animals.
+# This is creating a dataframe that pulls out the
+# area calculations that are contained in the
+# getvolumeUD object. The list element and item
+# calls will have to be adjusted and checked.
+
+BRB_area <- data.frame(matrix(ncol=4))
+colnames(BRB_area) <- c("id", "year", "area", "nb.reloc")
 
 system.time(for(i in 1:length(thenames)){
-	vect(BRBs_BM_WIv[i],paste0(here("BRB_UDs","BM","WI"),"/",thenames[i],"_hr.Rds"))
-  homerangedf <- as.data.frame(BRBs_BM_WIv[i])
-  BRB_area[i,c(1:4)] <- rbind(data.frame(id = name_burst[[i]], year = substr(names(BM_WI_Traj[i]),7,11), area = homerangedf[,2], nb.reloc = nrow(BM_WI_Traj[[i]][[1]])))
+  homerangedf <- as.data.frame(vud[i])
+  BRB_area[i,c(1:4)] <- rbind(data.frame(id = name_burst[[i]],
+                                         year = substr(names(BM_WI_Traj[i]),7,11),
+                                         area = homerangedf[,2],
+                                         nb.reloc = nrow(BM_WI_Traj[[i]][[1]])))
      })
 
-
+# Save the output.
 write.csv(BRB_area, paste0(here("BRB_UDs"), "/BM_WI_BRB_areas.csv", sep=""), row.names = FALSE)
 
 
-
+#############################################
+#############################################
+#############################################
 #############
 ## BM Calving
 
