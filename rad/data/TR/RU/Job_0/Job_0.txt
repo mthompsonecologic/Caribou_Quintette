@@ -1,4 +1,4 @@
-"AnimalID","N","E","season","timestamp","areatag","lag","step","SA","YearSeas","date"
+"AnimalID"	"N"	"E"	"season"	"timestamp"	"areatag"	"lag"	"step"	"SA"	"YearSeas"	"date"
 car036	6079837.38	625799.47	TR	2004-09-12 22:53:00	Roman	26227	279.5	data	2004	2004-09-12
 car036	6081008.38	636178.97	TR	2004-09-27 16:48:00	Roman	21235	40	data	2004	2004-09-27
 car036	6083734.99	626614.76	TR	2004-10-14 22:55:00	Roman	24847	111.8	data	2004	2004-10-14

@@ -1,4 +1,4 @@
-"AnimalID","N","E","season","timestamp","areatag","lag","step","SA","YearSeas","date"
+"AnimalID"	"N"	"E"	"season"	"timestamp"	"areatag"	"lag"	"step"	"SA"	"YearSeas"	"date"
 car142	6105155.87	605596.05	BM	2011-07-01 04:01:00	Bullmoose	421	121.7	data	2011	2011-07-01
 car142	6105245.64	605625.86	BM	2011-07-01 12:00:00	Bullmoose	479	147.1	data	2011	2011-07-01
 car142	6103765.63	605181.78	BM	2011-07-01 18:00:00	Bullmoose	360	1412.2	data	2011	2011-07-01

@@ -1,4 +1,4 @@
-"AnimalID","N","E","season","timestamp","areatag","lag","step","SA","YearSeas","date"
+"AnimalID"	"N"	"E"	"season"	"timestamp"	"areatag"	"lag"	"step"	"SA"	"YearSeas"	"date"
 car172	6078638.83	626732.67	TR	2013-05-01 02:01:00	Roman	480	144.7	data	2013	2013-05-01
 car172	6078669.49	626635.42	TR	2013-05-01 10:01:00	Roman	480	325.1	data	2013	2013-05-01
 car172	6078607.01	627183.42	TR	2013-05-01 18:01:00	Roman	480	223.7	data	2013	2013-05-01

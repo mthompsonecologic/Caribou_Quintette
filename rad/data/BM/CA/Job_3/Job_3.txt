@@ -1,4 +1,4 @@
-"AnimalID","N","E","season","timestamp","areatag","lag","step","SA","YearSeas","date"
+"AnimalID"	"N"	"E"	"season"	"timestamp"	"areatag"	"lag"	"step"	"SA"	"YearSeas"	"date"
 car183	6116131.56	606476.36	BM	2015-05-04 14:02:00	Bullmoose	9661	594.8	data	2015	2015-05-04
 car183	6115764.54	606491.53	BM	2015-05-06 12:00:00	Bullmoose	2758	954	data	2015	2015-05-06
 car183	6115705.85	606365.51	BM	2015-05-07 11:00:00	Bullmoose	1380	180.6	data	2015	2015-05-07

@@ -27,6 +27,7 @@ def main():
     # Create Diretories for every possible season and areatag combination
 	raw = open("data/Caribou_noclip.csv").readlines()
 	header = raw.pop(0)
+	header = header.replace(",", "\t")
 	unique_directories = set()
 	parsed_data = dict()
 	# winter = ["EW", "MW", "LW"]

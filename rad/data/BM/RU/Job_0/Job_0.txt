@@ -1,4 +1,4 @@
-"AnimalID","N","E","season","timestamp","areatag","lag","step","SA","YearSeas","date"
+"AnimalID"	"N"	"E"	"season"	"timestamp"	"areatag"	"lag"	"step"	"SA"	"YearSeas"	"date"
 car007	6103337.82	583363.4	BM	2002-09-14 12:00:00	Bullmoose	31260	232.6	data	2002	2002-09-14
 car007	6098077.69	594244.14	BM	2002-09-30 19:00:00	Bullmoose	23460	682.1	data	2002	2002-09-30
 car007	6099692.02	597368.49	BM	2002-10-21 12:00:00	Bullmoose	29820	320	data	2002	2002-10-21
