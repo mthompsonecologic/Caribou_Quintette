@@ -43,7 +43,8 @@ list.of.packages <- c(
   "ks",
   "rgdal",
   "terra",
-  "sf"
+  "sf",
+  "future"
   )
 new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
 

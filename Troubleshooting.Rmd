@@ -19,7 +19,25 @@ list.of.packages <- c(
   "stringr",
   "ks",
   "rgdal",
-  "terra")
+  "terra", 
+  "sf", "future")
+
+ # Updated list
+list.of.packages <- c(
+	"foreach",
+	"future",
+	"future.apply",
+	"future.batchtools",
+	"doParallel",
+	"rslurm",
+	"here",
+	"adehabitatLT",
+	"adehabitatHR",
+	"rgdal",
+	"terra",
+	"sf"
+)
+
 for(package.i in list.of.packages){
   suppressPackageStartupMessages(
     library(
@@ -44,7 +62,7 @@ loc.output <- paste0("adeHRoutput/")
 #############################################################################
 
 ##Caribou_Quintette2 <- read.csv(paste0(here("Input Data"), "/Caribou_July2022.csv"), stringsAsFactors = FALSE) # Old
-Caribou_BMTR <- read.csv("Caribou_noclip.csv")
+Caribou_BMTR <- read.csv("Input_Data/Caribou_noclip.csv")
 # Separating the data into two tables
 Caribou_BM <- Caribou_BMTR[which(Caribou_BMTR$SA == "BM"),]
 Caribou_TR <- Caribou_BMTR[which(Caribou_BMTR$SA == "TR"),]
@@ -196,6 +214,30 @@ BRBs_BM_WI <- foreach(i = 1:4,
 stopCluster(my.cluster)
 
 saveRDS(BRBs_BM_WI, "BRBs_BM_WI.rds")
+
+n.cores <- parallel::detectCores() - 1
+my.cluster <- parallel::makeCluster(
+  n.cores, 
+  type = "FORK"
+  )
+#register it to be used by %dopar%
+doParallel::registerDoParallel(cl = my.cluster)
+system.time({
+x <- foreach(i = 1:4) %dopar% {
+	saveRDS(brb[[i]], paste("animal", as.character(i), ".rds", sep = ""))
+		}
+	})
+stopCluster(my.cluster)
+# VS
+system.time({
+saving <- function(dat, j){
+	print(j)
+	saveRDS(dat, paste("animal_", as.character(j), ".rds", sep = ""))
+}
+j <- c(1, 2, 3, 4)
+y <- mapply(saving, brb2, j)
+})
+
 animal1 <- BRBs_BM_WI[[1]]
 animal2 <- BRBs_BM_WI[[2]]
 animal3 <- BRBs_BM_WI[[3]]
@@ -237,26 +279,156 @@ gcinfo(TRUE)
 
 
 # Load pre-created data (double list version)
-brb <- readRDS("brb.rds")
+brb <- readRDS("Input_Data/BRBs_BM_WI.rds")
 
 #Load data and generate single list version of data -- workable
-animal1 <- readRDS("animal1.rds")
-animal2 <- readRDS("animal2.rds")
-animal3 <- readRDS("animal3.rds")
-animal4 <- readRDS("animal4.rds")
-brb2 <- list(a, b, c, d)
+animal1 <- readRDS("Input_Data/animal1.rds")
+animal2 <- readRDS("Input_Data/animal2.rds")
+animal3 <- readRDS("Input_Data/animal3.rds")
+animal4 <- readRDS("Input_Data/animal4.rds")
+brb2 <- list(animal1, animal2, animal3, animal4)
 
-# Test first - works
-x <- vect(animal1)
 
-# Execute apply - works
-y <- lapply(brb2, vect)
+options(future.globals.maxSize= 2912896000)
+brb <- readRDS("BRBs_BM_WI.rds")
+j <- c(1, 2, 3, 4)
 
-# Generate cluster
-cl <- makeCluster(4, "PSOCK")
+# Parallel Approach
+n.cores <- parallel::detectCores() - 1
+my.cluster <- parallel::makeCluster(
+  n.cores, 
+  type = "FORK"
+  )
+#register it to be used by %dopar%
+doParallel::registerDoParallel(cl = my.cluster)
+system.time({
+x <- foreach(i = 1:4) %dopar% {
+	saveRDS(brb[[i]], paste("animal", as.character(i), ".rds", sep = ""))
+		}
+	})
+stopCluster(my.cluster)
+# VS
+system.time({
+saving <- function(dat, j){
+	print(j)
+	saveRDS(dat, paste("animal_", as.character(j), ".rds", sep = ""))
+}
 
-# Execute parallel apply - Error in unserialize(node$con) : error reading from connection
-z <- parLapply(cl, brb2, vect)
-
+y <- mapply(saving, brb, j)
+})
 # Possible reasons
+```
+
+
+
+
+
+
+
+
+
+MinReproduce
+salloc --time 1:00:00 ncores=1 ---mem=0 --cpus-per-task=40
+```{r}
+data(puechcirc)
+
+pc1 <- puechcirc[1]
+pc2 <- puechcirc[2]
+pc3 <- puechcirc[3]
+Traj_li <- vector("list", 3)
+Traj_li[[1]] <- pc1
+Traj_li[[2]] <- pc2
+Traj_li[[3]] <- pc3
+DLik <- c(2.1, 2.2, 4)
+thenames <- c("pn1", "pn2", "pn3")
+
+# Create and save the estBRB objects in parallel:
+
+n.cores <- future::availableCores()
+my.cluster <- parallel::makeCluster(
+  n.cores, 
+  type = "PSOCK" 
+  )
+
+#register it to be used by %dopar%
+doParallel::registerDoParallel(cl = my.cluster)
+
+system.time({
+BRBs_BM_WI <- foreach(i = 1:length(Traj_li),
+                      .combine = c,
+                      .packages = c("adehabitatHR","adehabitatLT", "here")) %dopar% {
+                            saveRDS(BRB(Traj_li[[i]][1],
+                            D = DLik[i],
+                            Tmax = 1500*60,
+                            Lmin = 2,
+                            hmin = 20,
+                            type = "UD",
+                            grid = 4000),paste0(here("BRB_UDs"),"/",thenames[i],"toy.Rds"))
+                        }})
+stopCluster(my.cluster)
+
+# list in the estBRB object files
+BRBs_BM_WIf <- list.files(here("BRB_UDs"),
+                 pattern="toy.Rds$",
+                 full.names=TRUE)
+
+#Area cluster
+###########################################################
+### future approach, only for node=1, works fastest 311 sec -- RAD gave elapsed 286
+plan(multicore)
+system.time(BRBs_BM_WI <- lapply(BRBs_BM_WIf, function(x){readRDS(x)}))
+system.time(BRBs_BM_WIv <- future_lapply(BRBs_BM_WI, FUN = function(x) {getverticeshr.estUD(x)}))
+
+system.time(for(i in 1:length(thenames)){
+	vect(BRBs_BM_WIv[i],paste0(here("BRB_UDs"),"/",thenames[i],"toy_hr.Rds"))})
+
+###########################################################
+## parallel approach,370.487 Sec, RAD FORK gave elapsed 330 PSOCK gave elapsed 
+n.cores <- as.vector(future::availableCores())
+my.cluster <- parallel::makeCluster(
+  n.cores, 
+  type = "PSOCK" ## PSOCK for one node.
+  )
+
+#register it to be used by %dopar%
+doParallel::registerDoParallel(cl = my.cluster)
+
+BRBs_BM_WI <- lapply(BRBs_BM_WIf, function(x){readRDS(x)})
+
+system.time({
+homerange <- foreach(i = 1:length(BRBs_BM_WI),
+                      .combine = c,
+                      .packages = c("adehabitatHR","here")) %dopar% {
+                      saveRDS(getverticeshr.estUD(BRBs_BM_WI[[i]]),
+                              paste0(here("BRB_UDs"),"/",thenames[i],"toy_hr.Rds"))
+                        }    
+	})
+# Stop the parallel backend
+stopCluster(my.cluster)
+
+###########################################################
+#SlurmR testing these approaches
+
+getvertf <- function(x){
+  getverticeshr.estUD(x)
+}
+
+n.cores <- as.vector(future::availableCores())
+
+system.time(
+BRBs_BM_WIv <- slurm_map(BRBs_BM_WI,
+                  getvertf,
+                  nodes = 3, cpus_per_task = n.cores)
+)
+
+##
+# I note with future, you can plan. This requires from bash
+# look at the nodes and their names:
+# >sq
+# >scontrol show nodes cl['name of the first node'-'name of the last node']
+# e.g., for 3 Siku nodes: cl[064-066]
+# This does not work, but it should:
+plan(cluster, workers = c("cl064", "cl065", "cl066")) # get the names of the nodes from bash in interactive assign.
+
+
 ```
