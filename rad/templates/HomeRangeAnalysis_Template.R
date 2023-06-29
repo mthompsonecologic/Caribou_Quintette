@@ -1,7 +1,10 @@
 wd <- getwd()
 newwd <- paste("~/Github/Caribou_Quintette/rad", "data", "**SA**/**SEASON**/Job_**JOBID**/", sep = "/")
 setwd(newwd)
-dir.create(file.path(newwd, "BRB_UDs"), showWarnings = FALSE)
+if (dir.exists("BRB_UDs") == FALSE){
+	dir.create("BRB_UDs")
+}
+# dir.create(file.path(newwd, "BRB_UDs"), showWarnings = FALSE)
 # List of required packages
 list.of.packages <- c(
   "foreach",
@@ -175,7 +178,7 @@ thenames <- unlist(lapply(Traj_li, function (x) paste0(names(x),"_",id(x))))
 print("#############################################################################")
 
 print("##################################Home Range Analysis############################################\n\n")
-n.cores <- as.vector(future::availableCores()) - 1
+n.cores <- as.vector(future::availableCores())*.9
 my.cluster <- parallel::makeCluster(
   n.cores, 
   type = "PSOCK"
@@ -205,6 +208,7 @@ BRBs_**SA**_**SEASON**f <- list.files(here("BRB_UDs"),
                           pattern="\\.Rds$",
                           full.names=TRUE)
 
+BRBs_**SA**_**SEASON** <- lapply(BRBs_**SA**_**SEASON**f, function(x){readRDS(x)})
 ######################
 # BRB metric: Vertices
 # This is the extraction of the home-range contours
@@ -223,24 +227,22 @@ BRBs_**SA**_**SEASON**f <- list.files(here("BRB_UDs"),
 
 # future approach
 print("##################################BRB Vertices############################################")
-plan(multicore)
-BRBs_**SA**_**SEASON** <- lapply(BRBs_**SA**_**SEASON**f, function(x){readRDS(x)})
-system.time(BRBs_**SA**_**SEASON**v <- future_lapply(BRBs_**SA**_**SEASON**,
-                                         FUN = function(x) {
-                                           getverticeshr.estUD(x, percent=50)
-                                         }))
+# plan(multicore)
+# BRBs_**SA**_**SEASON** <- lapply(BRBs_**SA**_**SEASON**f, function(x){readRDS(x)})
+# system.time(BRBs_**SA**_**SEASON**v <- future_lapply(BRBs_**SA**_**SEASON**,
+#                                          FUN = function(x) {
+#                                            getverticeshr.estUD(x, percent=50)
+#                                          }))
 
 ### parallel approach
-n.cores <- as.vector(future::availableCores())
+n.cores <- as.vector(future::availableCores())*.9
 my.cluster <- parallel::makeCluster(
   n.cores, 
-  type = "FORK" ## Attempting fork for nodes > 1
+  type = "PSOCK"
 )
 
 #register it to be used by %dopar%
 doParallel::registerDoParallel(cl = my.cluster)
-
-BRBs_**SA**_**SEASON** <- lapply(BRBs_**SA**_**SEASON**f, function(x){readRDS(x)})
 
 system.time({
   homerange <- foreach(i = 1:length(BRBs_**SA**_**SEASON**),

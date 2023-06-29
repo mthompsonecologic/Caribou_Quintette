@@ -1,7 +1,10 @@
 wd <- getwd()
 newwd <- paste("~/Github/Caribou_Quintette/rad", "data", "BM/WI/Job_1/", sep = "/")
 setwd(newwd)
-dir.create(file.path(newwd, "BRB_UDs"), showWarnings = FALSE)
+if (dir.exists("BRB_UDs") == FALSE){
+	dir.create("BRB_UDs")
+}
+# dir.create(file.path(newwd, "BRB_UDs"), showWarnings = FALSE)
 # List of required packages
 list.of.packages <- c(
   "foreach",
@@ -175,7 +178,7 @@ thenames <- unlist(lapply(Traj_li, function (x) paste0(names(x),"_",id(x))))
 print("#############################################################################")
 
 print("##################################Home Range Analysis############################################\n\n")
-n.cores <- as.vector(future::availableCores()) - 1
+n.cores <- as.vector(future::availableCores())*.9
 my.cluster <- parallel::makeCluster(
   n.cores, 
   type = "PSOCK"
@@ -185,8 +188,7 @@ my.cluster <- parallel::makeCluster(
 doParallel::registerDoParallel(cl = my.cluster)
 print("##################################BRB Analysis############################################")
 system.time({
-#   BRBs_BM_WI <- foreach(i = 1:length(Traj_li),
-	BRBs_BM_WI <- foreach(i = 1:3,
+  BRBs_BM_WI <- foreach(i = 1:length(Traj_li),
                         .combine = c,
                         .packages = c("adehabitatHR","adehabitatLT")) %dopar% {
                           saveRDS(BRB(Traj_li[[i]][1],
@@ -206,6 +208,7 @@ BRBs_BM_WIf <- list.files(here("BRB_UDs"),
                           pattern="\\.Rds$",
                           full.names=TRUE)
 
+BRBs_BM_WI <- lapply(BRBs_BM_WIf, function(x){readRDS(x)})
 ######################
 # BRB metric: Vertices
 # This is the extraction of the home-range contours
@@ -224,24 +227,22 @@ BRBs_BM_WIf <- list.files(here("BRB_UDs"),
 
 # future approach
 print("##################################BRB Vertices############################################")
-plan(multicore)
-BRBs_BM_WI <- lapply(BRBs_BM_WIf, function(x){readRDS(x)})
-system.time(BRBs_BM_WIv <- future_lapply(BRBs_BM_WI,
-                                         FUN = function(x) {
-                                           getverticeshr.estUD(x, percent=50)
-                                         }))
+# plan(multicore)
+# BRBs_BM_WI <- lapply(BRBs_BM_WIf, function(x){readRDS(x)})
+# system.time(BRBs_BM_WIv <- future_lapply(BRBs_BM_WI,
+#                                          FUN = function(x) {
+#                                            getverticeshr.estUD(x, percent=50)
+#                                          }))
 
 ### parallel approach
-n.cores <- as.vector(future::availableCores())
+n.cores <- as.vector(future::availableCores())*.9
 my.cluster <- parallel::makeCluster(
   n.cores, 
-  type = "FORK" ## Attempting fork for nodes > 1
+  type = "PSOCK"
 )
 
 #register it to be used by %dopar%
 doParallel::registerDoParallel(cl = my.cluster)
-
-BRBs_BM_WI <- lapply(BRBs_BM_WIf, function(x){readRDS(x)})
 
 system.time({
   homerange <- foreach(i = 1:length(BRBs_BM_WI),
