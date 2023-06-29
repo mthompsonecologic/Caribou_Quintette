@@ -6,7 +6,7 @@ parser = argparse.ArgumentParser(description = "Generates R and abash scripts fr
 parser.add_argument("--Templates", "-T", help = "path to directory with templates", required = True)
 parser.add_argument("--SAs", "-A", help = "space separated list of possible SAs i.e. default BM TR", required = False, nargs = "+", default= ["BM", "TR"])
 parser.add_argument("--Season", "-S", help = "space separated list of possible seasons i.e. default WI CA RU SU", required = False, nargs = "+", default= ["WI", "CA", "RU", "SU"])
-parser.add_argument("--Project", "-P", help = "Client Name", required = False, default= "Caribou Quintette")
+parser.add_argument("--Project", "-P", help = "Client Name", required = False, default= "Caribou_Quintette")
 
 args = parser.parse_args()
 

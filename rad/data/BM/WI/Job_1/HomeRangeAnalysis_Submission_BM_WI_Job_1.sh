@@ -3,7 +3,7 @@
 #SBATCH --time=48:00:00 # 48 hours
 #SBATCH --job-name=HomeRangeAnalysis_BM_WI_JOB_1
 #SBATCH --output=%x.out
-#SBATCH --comment=Caribou Quintette
+#SBATCH --comment=Caribou_Quintette
 
 module load r/4.2.2 udunits/2.2.28 gdal geos proj/9.0.1 protobuf
 
