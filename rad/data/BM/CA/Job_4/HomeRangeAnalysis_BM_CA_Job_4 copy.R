@@ -1,5 +1,5 @@
 wd <- getwd()
-newwd <- paste("~/Github/Caribou_Quintette/rad", "data", "**SA**/**SEASON**/Job_**JOBID**/", sep = "/")
+newwd <- paste("~/Github/Caribou_Quintette/rad", "data", "BM/CA/Job_4/", sep = "/")
 setwd(newwd)
 if (dir.exists("BRB_UDs") == FALSE){
 	dir.create("BRB_UDs")
@@ -39,7 +39,7 @@ for(package.i in list.of.packages){
   )
 }
 ##############Actual Data###############
-Caribou_**SA**_**SEASON**<- read.delim("Job_**JOBID**.txt", sep = "\t")
+Caribou_BM_CA<- read.delim("Job_4.txt", sep = "\t")
 
 # Data Frame Parameters
 #############################################################################
@@ -57,19 +57,19 @@ loc.output <- paste0("adeHRoutput/")
 
 ##############SKIPPED BECAUSE NO LONGER APPLICABLE AT SUBSET LEVEL########################
 # # Trajectories
-# Caribou**SA**.ltraj <- as.ltraj(xy = Caribou_**SA**[,c("E", "N")], 
-#                             date =  as.POSIXct(Caribou_**SA**$timestamp,
+# CaribouBM.ltraj <- as.ltraj(xy = Caribou_BM[,c("E", "N")], 
+#                             date =  as.POSIXct(Caribou_BM$timestamp,
 #                                                format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
-#                             id = Caribou_**SA**$ANIMALID, typeII = TRUE)
-# total.path.df <- data.frame(Caribou**SA**.ltraj[[1]],
-#                             id = attr(Caribou**SA**.ltraj[[1]],
+#                             id = Caribou_BM$ANIMALID, typeII = TRUE)
+# total.path.df <- data.frame(CaribouBM.ltraj[[1]],
+#                             id = attr(CaribouBM.ltraj[[1]],
 #                                       "id"))
 # 
 # # Fill Data frame with trajectories
-# for(i in 2:length(Caribou**SA**.ltraj)) {
+# for(i in 2:length(CaribouBM.ltraj)) {
 #   total.path.df <- rbind(total.path.df,
-#                          data.frame(Caribou**SA**.ltraj[[i]],
-#                                     id = attr(Caribou**SA**.ltraj[[i]],
+#                          data.frame(CaribouBM.ltraj[[i]],
+#                                     id = attr(CaribouBM.ltraj[[i]],
 #                                               "id")))
 # }
 #############################################################################
@@ -87,86 +87,86 @@ loc.output <- paste0("adeHRoutput/")
 
 
 print("###########################Data Preparation Step##################################################")
-years <- unique(Caribou_**SA**_**SEASON**$YearSeas)
+years <- unique(Caribou_BM_CA$YearSeas)
 
-Caribou_**SA**_**SEASON**_LI <- list()
+Caribou_BM_CA_LI <- list()
 tally = 1
 x = 1
 IndID <- data.frame(matrix(ncol=1))
 colnames(IndID) <- "ID"
 for(y in 1:length(years)){
-  if(nrow(data.frame(Caribou_**SA**_**SEASON**[which(Caribou_**SA**_**SEASON**$YearSeas == years[y]), ])) > 0){
-    assign("temp",data.frame(Caribou_**SA**_**SEASON**[which(Caribou_**SA**_**SEASON**$YearSeas == years[y]), ]))
+  if(nrow(data.frame(Caribou_BM_CA[which(Caribou_BM_CA$YearSeas == years[y]), ])) > 0){
+    assign("temp",data.frame(Caribou_BM_CA[which(Caribou_BM_CA$YearSeas == years[y]), ]))
     Ind <- unique(temp$AnimalID)
     for(i in 1:length(Ind)){
       if(nrow(temp[which(temp$AnimalID == Ind[i]),]) < 5){  ## Threshold on #track points
         IndID[x,] <- Ind[i]
         x = x + 1
       }else{next()}}
-    Caribou_**SA**_**SEASON**_LI[[tally]] <- temp[!temp$AnimalID %in% IndID$ID,]
-    names(Caribou_**SA**_**SEASON**_LI)[tally] <- paste0("Caribou_**SA**_**SEASON**_",years[y])
+    Caribou_BM_CA_LI[[tally]] <- temp[!temp$AnimalID %in% IndID$ID,]
+    names(Caribou_BM_CA_LI)[tally] <- paste0("Caribou_BM_CA_",years[y])
     tally = tally + 1
   }else{next()}
 }
-Caribou_**SA**_**SEASON**_LI[sapply(Caribou_**SA**_**SEASON**_LI,function(x) all(is.na(x)))] <- NULL
+Caribou_BM_CA_LI[sapply(Caribou_BM_CA_LI,function(x) all(is.na(x)))] <- NULL
 
 ##Winter
-**SA**_**SEASON**_Traj <- list()
-for(l in 1:length(Caribou_**SA**_**SEASON**_LI)){
-  **SA**_**SEASON**_Traj[[l]] <-  as.ltraj(xy = Caribou_**SA**_**SEASON**_LI[[l]][,c("E", "N")], 
-                               date =  as.POSIXct(Caribou_**SA**_**SEASON**_LI[[l]]$timestamp,
+BM_CA_Traj <- list()
+for(l in 1:length(Caribou_BM_CA_LI)){
+  BM_CA_Traj[[l]] <-  as.ltraj(xy = Caribou_BM_CA_LI[[l]][,c("E", "N")], 
+                               date =  as.POSIXct(Caribou_BM_CA_LI[[l]]$timestamp,
                                                   format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
-                               id = Caribou_**SA**_**SEASON**_LI[[l]]$AnimalID,
+                               id = Caribou_BM_CA_LI[[l]]$AnimalID,
                                typeII = TRUE)
-  names(**SA**_**SEASON**_Traj)[l] <- paste0("**SA**_**SEASON**_",unique(Caribou_**SA**_**SEASON**_LI[[l]]$YearSeas))
+  names(BM_CA_Traj)[l] <- paste0("BM_CA_",unique(Caribou_BM_CA_LI[[l]]$YearSeas))
 }
 print("#############################################################################")
 
 
 
 print("#################################Trajectories#############################################")
-**SA**_**SEASON**_Traj <- list()
-for(l in 1:length(Caribou_**SA**_**SEASON**_LI)){
-  **SA**_**SEASON**_Traj[[l]] <-  as.ltraj(xy = Caribou_**SA**_**SEASON**_LI[[l]][,c("E", "N")], 
-                               date =  as.POSIXct(Caribou_**SA**_**SEASON**_LI[[l]]$timestamp,
+BM_CA_Traj <- list()
+for(l in 1:length(Caribou_BM_CA_LI)){
+  BM_CA_Traj[[l]] <-  as.ltraj(xy = Caribou_BM_CA_LI[[l]][,c("E", "N")], 
+                               date =  as.POSIXct(Caribou_BM_CA_LI[[l]]$timestamp,
                                                   format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
-                               id = Caribou_**SA**_**SEASON**_LI[[l]]$AnimalID,
+                               id = Caribou_BM_CA_LI[[l]]$AnimalID,
                                typeII = TRUE)
-  names(**SA**_**SEASON**_Traj)[l] <- paste0("**SA**_**SEASON**_",unique(Caribou_**SA**_**SEASON**_LI[[l]]$YearSeas))
+  names(BM_CA_Traj)[l] <- paste0("BM_CA_",unique(Caribou_BM_CA_LI[[l]]$YearSeas))
 }
 print("#############################################################################")
 
 
 
 print("#############################Diffusion Parameter################################################")
-DLik_**SA**_**SEASON** <- list()
+DLik_BM_CA <- list()
 tally = 1
-**SA**_**SEASON**_Traj <- **SA**_**SEASON**_Traj[order(names(**SA**_**SEASON**_Traj))]
+BM_CA_Traj <- BM_CA_Traj[order(names(BM_CA_Traj))]
 
-for(t in 1:length(**SA**_**SEASON**_Traj)){
-  DLik_**SA**_**SEASON**[[tally]] <- BRB.likD(**SA**_**SEASON**_Traj[[t]], Tmax=1500*60, Lmin=2,  Dr=c(2,7))
+for(t in 1:length(BM_CA_Traj)){
+  DLik_BM_CA[[tally]] <- BRB.likD(BM_CA_Traj[[t]], Tmax=1500*60, Lmin=2,  Dr=c(2,7))
   tally = tally + 1
 }
 
-names(DLik_**SA**_**SEASON**) <- names(**SA**_**SEASON**_Traj)
+names(DLik_BM_CA) <- names(BM_CA_Traj)
 
 
-DLik_**SA**_**SEASON**_u <- unlist(DLik_**SA**_**SEASON**)
-DLik_**SA**_**SEASON**_u <- DLik_**SA**_**SEASON**_u[1:(length(DLik_**SA**_**SEASON**_u)/2)*2]
-DLik_**SA**_**SEASON**_u <- as.numeric(as.vector(DLik_**SA**_**SEASON**_u))
+DLik_BM_CA_u <- unlist(DLik_BM_CA)
+DLik_BM_CA_u <- DLik_BM_CA_u[1:(length(DLik_BM_CA_u)/2)*2]
+DLik_BM_CA_u <- as.numeric(as.vector(DLik_BM_CA_u))
 
-Traj_len <- as.numeric(as.vector(lengths(**SA**_**SEASON**_Traj)))
+Traj_len <- as.numeric(as.vector(lengths(BM_CA_Traj)))
 
 
-Traj_li <- vector("list", length(DLik_**SA**_**SEASON**_u))
+Traj_li <- vector("list", length(DLik_BM_CA_u))
 a = 1
 b = 1
 
 for(y in 1:length(Traj_len)){
   b = 1
   while(b <= Traj_len[y]){
-    Traj_li[[a]] <- **SA**_**SEASON**_Traj[[y]][b]
-    names(Traj_li[[a]])  <- names(**SA**_**SEASON**_Traj[y])
+    Traj_li[[a]] <- BM_CA_Traj[[y]][b]
+    names(Traj_li[[a]])  <- names(BM_CA_Traj[y])
     b = b + 1
     a = a + 1
   }
@@ -178,7 +178,7 @@ thenames <- unlist(lapply(Traj_li, function (x) paste0(names(x),"_",id(x))))
 print("#############################################################################")
 
 print("##################################Home Range Analysis############################################\n\n")
-n.cores <- as.vector(future::availableCores())-5
+n.cores <- as.vector(future::availableCores())*.9
 my.cluster <- parallel::makeCluster(
   n.cores, 
   type = "PSOCK"
@@ -188,11 +188,11 @@ my.cluster <- parallel::makeCluster(
 doParallel::registerDoParallel(cl = my.cluster)
 print("##################################BRB Analysis############################################")
 system.time({
-  BRBs_**SA**_**SEASON** <- foreach(i = 1:length(Traj_li),
+  BRBs_BM_CA <- foreach(i = 1:3,
                         .combine = c,
                         .packages = c("adehabitatHR","adehabitatLT")) %dopar% {
                           saveRDS(BRB(Traj_li[[i]][1],
-                                      D = DLik_**SA**_**SEASON**_u[i],
+                                      D = DLik_BM_CA_u[i],
                                       Tmax = 1500*60,
                                       Lmin = 2,
                                       hmin = 20,
@@ -204,11 +204,11 @@ print("#########################################################################
 # Now we calculate the BRB metrics
 # Read in the files
 
-BRBs_**SA**_**SEASON**f <- list.files(here("BRB_UDs"),
+BRBs_BM_CAf <- list.files(here("BRB_UDs"),
                           pattern="\\.Rds$",
                           full.names=TRUE)
 
-BRBs_**SA**_**SEASON** <- lapply(BRBs_**SA**_**SEASON**f, function(x){readRDS(x)})
+BRBs_BM_CA <- lapply(BRBs_BM_CAf, function(x){readRDS(x)})
 ######################
 # BRB metric: Vertices
 # This is the extraction of the home-range contours
@@ -228,8 +228,8 @@ BRBs_**SA**_**SEASON** <- lapply(BRBs_**SA**_**SEASON**f, function(x){readRDS(x)
 # future approach
 print("##################################BRB Vertices############################################")
 # plan(multicore)
-# BRBs_**SA**_**SEASON** <- lapply(BRBs_**SA**_**SEASON**f, function(x){readRDS(x)})
-# system.time(BRBs_**SA**_**SEASON**v <- future_lapply(BRBs_**SA**_**SEASON**,
+# BRBs_BM_CA <- lapply(BRBs_BM_CAf, function(x){readRDS(x)})
+# system.time(BRBs_BM_CAv <- future_lapply(BRBs_BM_CA,
 #                                          FUN = function(x) {
 #                                            getverticeshr.estUD(x, percent=50)
 #                                          }))
@@ -245,11 +245,11 @@ my.cluster <- parallel::makeCluster(
 doParallel::registerDoParallel(cl = my.cluster)
 
 system.time({
-  homerange <- foreach(i = 1:length(BRBs_**SA**_**SEASON**),
+  homerange <- foreach(i = 1:length(BRBs_BM_CA),
                        .combine = c,
                        .packages = c("adehabitatHR","here")) %dopar% {
-                         saveRDS(getverticeshr.estUD(BRBs_**SA**_**SEASON**[[i]], percent=50),
-                                 paste0(here("BRB_UDs","**SA**","**SEASON**"),"/",thenames[i],"_hr.Rds"))
+                         saveRDS(getverticeshr.estUD(BRBs_BM_CA[[i]], percent=50),
+                                 paste0(here("BRB_UDs","BM","CA"),"/",thenames[i],"_hr.Rds"))
                        }    
 })
 # Stop the parallel backend
@@ -281,11 +281,11 @@ my.cluster <- parallel::makeCluster(
 doParallel::registerDoParallel(cl = my.cluster)
 
 ## This currently saves as a spatVector:
-vud <- foreach(i = 1:length(BRBs_**SA**_**SEASON**),
+vud <- foreach(i = 1:length(BRBs_BM_CA),
                .combine = c,
                .packages = c("adehabitatHR","here","terra")) %dopar% {
-                 vect(getvolumeUD(BRBs_**SA**_**SEASON**[[i]]),
-                      paste0(here("BRB_UDs","**SA**","**SEASON**"),"/",
+                 vect(getvolumeUD(BRBs_BM_CA[[i]]),
+                      paste0(here("BRB_UDs","BM","CA"),"/",
                              thenames[i],"_vUD.shp"))    
                }
 
@@ -305,10 +305,10 @@ colnames(BRB_area) <- c("id", "year", "area", "nb.reloc")
 system.time(for(i in 1:length(thenames)){
   homerangedf <- as.data.frame(vud[i])
   BRB_area[i,c(1:4)] <- rbind(data.frame(id = name_burst[[i]],
-                                         year = substr(names(**SA**_**SEASON**_Traj[i]),7,11),
+                                         year = substr(names(BM_CA_Traj[i]),7,11),
                                          area = homerangedf[,2],
-                                         nb.reloc = nrow(**SA**_**SEASON**_Traj[[i]][[1]])))
+                                         nb.reloc = nrow(BM_CA_Traj[[i]][[1]])))
 })
 print("#############################################################################")
 # Save the output.
-write.csv(BRB_area, paste0(here("BRB_UDs"), "/**SA**_**SEASON**_BRB_areas.csv", sep=""), row.names = FALSE)
+write.csv(BRB_area, paste0(here("BRB_UDs"), "/BM_CA_BRB_areas.csv", sep=""), row.names = FALSE)
