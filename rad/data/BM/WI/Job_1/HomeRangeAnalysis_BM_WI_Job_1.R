@@ -1,5 +1,5 @@
 wd <- getwd()
-newwd <- paste("Github/Caribou_Quintette/rad", "data", "BM/WI/Job_1/", sep = "/")
+newwd <- paste("~/Github/Caribou_Quintette/rad", "data", "BM/WI/Job_1/", sep = "/")
 setwd(newwd)
 dir.create(file.path(newwd, "BRB_UDs"), showWarnings = FALSE)
 # List of required packages
@@ -72,19 +72,19 @@ loc.output <- paste0("adeHRoutput/")
 #############################################################################
 
 # Calculate distance traveled per day and add it to the dataframe
-total.path.df$distperday <- total.path.df$dist / (total.path.df$dt/60/60/24)
-# Aggregate to show mean distance per day for each animal
-path.summary <- aggregate(distperday~id, data = total.path.df, FUN = mean)
-path.summary$sd <- aggregate(distperday~id, data = total.path.df, FUN = sd)$distperday
-# Look at summary dataframe
-path.summary
+# total.path.df$distperday <- total.path.df$dist / (total.path.df$dt/60/60/24)
+# # Aggregate to show mean distance per day for each animal
+# path.summary <- aggregate(distperday~id, data = total.path.df, FUN = mean)
+# path.summary$sd <- aggregate(distperday~id, data = total.path.df, FUN = sd)$distperday
+# # Look at summary dataframe
+# path.summary
 
 
 ######SKIPPED - WINTER ORGANIZED AS SINGLE DURING DATA SPLIT##############
 
 
-###########################Data Preparation Step##################################################
-years <- unique(Caribou_BMTR$YearSeas)
+print("###########################Data Preparation Step##################################################")
+years <- unique(Caribou_BM_WI$YearSeas)
 
 Caribou_BM_WI_LI <- list()
 tally = 1
@@ -117,11 +117,11 @@ for(l in 1:length(Caribou_BM_WI_LI)){
                                typeII = TRUE)
   names(BM_WI_Traj)[l] <- paste0("BM_WI_",unique(Caribou_BM_WI_LI[[l]]$YearSeas))
 }
-#############################################################################
+print("#############################################################################")
 
 
 
-#################################Trajectories############################################# 
+print("#################################Trajectories#############################################")
 BM_WI_Traj <- list()
 for(l in 1:length(Caribou_BM_WI_LI)){
   BM_WI_Traj[[l]] <-  as.ltraj(xy = Caribou_BM_WI_LI[[l]][,c("E", "N")], 
@@ -131,11 +131,11 @@ for(l in 1:length(Caribou_BM_WI_LI)){
                                typeII = TRUE)
   names(BM_WI_Traj)[l] <- paste0("BM_WI_",unique(Caribou_BM_WI_LI[[l]]$YearSeas))
 }
-#############################################################################
+print("#############################################################################")
 
 
 
-#############################Diffusion Parameter################################################
+print("#############################Diffusion Parameter################################################")
 DLik_BM_WI <- list()
 tally = 1
 BM_WI_Traj <- BM_WI_Traj[order(names(BM_WI_Traj))]
@@ -172,10 +172,9 @@ for(y in 1:length(Traj_len)){
 ## The BRBs_BM_WI need to be named. The names are contained here:
 thenames <- unlist(lapply(Traj_li, function (x) paste0(names(x),"_",id(x))))
 
-#############################################################################
+print("#############################################################################")
 
-
-##################################Home Range Analysis############################################
+print("##################################Home Range Analysis############################################\n\n")
 n.cores <- as.vector(future::availableCores()) - 1
 my.cluster <- parallel::makeCluster(
   n.cores, 
@@ -184,9 +183,10 @@ my.cluster <- parallel::makeCluster(
 
 #register it to be used by %dopar%
 doParallel::registerDoParallel(cl = my.cluster)
-
+print("##################################BRB Analysis############################################")
 system.time({
-  BRBs_BM_WI <- foreach(i = 1:length(Traj_li),
+#   BRBs_BM_WI <- foreach(i = 1:length(Traj_li),
+	BRBs_BM_WI <- foreach(i = 1:3,
                         .combine = c,
                         .packages = c("adehabitatHR","adehabitatLT")) %dopar% {
                           saveRDS(BRB(Traj_li[[i]][1],
@@ -198,7 +198,7 @@ system.time({
                                       grid = 4000),paste0(here("BRB_UDs"),"/",thenames[i],".Rds"))
                         }})
 stopCluster(my.cluster)
-
+print("#############################################################################")
 # Now we calculate the BRB metrics
 # Read in the files
 
@@ -223,6 +223,7 @@ BRBs_BM_WIf <- list.files(here("BRB_UDs"),
 ## approach ran faster.
 
 # future approach
+print("##################################BRB Vertices############################################")
 plan(multicore)
 BRBs_BM_WI <- lapply(BRBs_BM_WIf, function(x){readRDS(x)})
 system.time(BRBs_BM_WIv <- future_lapply(BRBs_BM_WI,
@@ -252,7 +253,7 @@ system.time({
 })
 # Stop the parallel backend
 stopCluster(my.cluster)
-
+print("#############################################################################")
 ######################
 # BRB metric: getvolumeUD
 # Description from adehabitat package:
@@ -268,7 +269,7 @@ stopCluster(my.cluster)
 ######################
 
 #create the cluster
-
+print("##################################BRB Volume############################################")
 n.cores <- as.vector(future::availableCores())
 my.cluster <- parallel::makeCluster(
   n.cores, 
@@ -307,6 +308,6 @@ system.time(for(i in 1:length(thenames)){
                                          area = homerangedf[,2],
                                          nb.reloc = nrow(BM_WI_Traj[[i]][[1]])))
 })
-
+print("#############################################################################")
 # Save the output.
 write.csv(BRB_area, paste0(here("BRB_UDs"), "/BM_WI_BRB_areas.csv", sep=""), row.names = FALSE)
