@@ -173,7 +173,9 @@ savingBRB <- function(dat, name){
 	print(j)
 	saveRDS(dat, paste("BRB_UDs/", name, ".Rds", sep = ""))
 }
-mapply(saving, BRBs_BM_CA, thenames)
+system.time(
+	mapply(savingBRB, BRBs_BM_CA, thenames)
+)
 print("#############################################################################")
 # Now we calculate the BRB metrics
 ######################
