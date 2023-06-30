@@ -245,7 +245,7 @@ colnames(BRB_area) <- c("id", "year", "area", "nb.reloc")
 
 system.time(for(i in 1:length(thenames)){
   homerangedf <- as.data.frame(vud[i])
-  BRB_area[i,c(1:4)] <- rbind(data.frame(id = name_burst[[i]],
+  BRB_area[i,c(1:4)] <- rbind(data.frame(id = thenames[[i]],
                                          year = substr(names(**SA**_**SEASON**_Traj[i]),7,11),
                                          area = homerangedf[,2],
                                          nb.reloc = nrow(**SA**_**SEASON**_Traj[[i]][[1]])))
