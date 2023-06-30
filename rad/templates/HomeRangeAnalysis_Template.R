@@ -198,7 +198,7 @@ print("#########################################################################
 print("##################################BRB Vertices############################################")
 GettingVertices <- function(data, name){
 	Vertices <- getverticeshr.estUD(data, percent=50)
-	saveRDS(Vertices, paste("BRB_hrs/", name, "_hr_.Rds"), sep = "")
+	saveRDS(Vertices, paste("BRB_hrs/", name, "_hr.Rds", sep = ""))
 }
 
 system.time(
@@ -225,7 +225,9 @@ print("#########################################################################
 print("##################################BRB Volume############################################")
 GettingVolume <- function(data, name){
 	Volume <- getvolumeUD(data)
-	vect(Volume, paste("BRB_vUDs/", name, "vUD.shp"))
+	Volume_V <- vect(Volume)
+	writeVector(Volume_V, paste("BRB_vUDs/", name, "_vUD.shp", sep = ""))
+	# vect(Volume, paste("BRB_vUDs/", name, "vUD.shp", sep = ""))
 }
 system.time(
 	vud <- (mapply(GettingVolume, BRBs_**SA**_**SEASON**, thenames))
