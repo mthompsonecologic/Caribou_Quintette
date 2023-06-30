@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --mem=64000M
-#SBATCH --time=48:00:00 # 48 hours
+#SBATCH --time=71:00:00 # 48 hours
 #SBATCH --job-name=HomeRangeAnalysis_**SA**_**SEASON**_JOB_**JOBID**
 #SBATCH --output=%x.out
 #SBATCH --comment=**PROJECT**

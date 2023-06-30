@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --mem=64000M
-#SBATCH --time=48:00:00 # 48 hours
+#SBATCH --time=71:00:00 # 48 hours
 #SBATCH --job-name=HomeRangeAnalysis_TR_SU_JOB_2
 #SBATCH --output=%x.out
 #SBATCH --comment=Caribou_Quintette

@@ -1,8 +1,20 @@
+gc()
+gcinfo(TRUE)
 wd <- getwd()
 newwd <- paste("~/Github/Caribou_Quintette/rad", "data", "BM/WI/Job_4/", sep = "/")
 setwd(newwd)
+# Create Directories for Outputs
+# BRB Files
 if (dir.exists("BRB_UDs") == FALSE){
 	dir.create("BRB_UDs")
+}
+# GetVertices Files
+if (dir.exists("BRB_hrs") == FALSE){
+	dir.create("BRB_hrs")
+}
+# GetVolume Files
+if (dir.exists("BRB_vUDs") == FALSE){
+	dir.create("BRB_vUDs")
 }
 # dir.create(file.path(newwd, "BRB_UDs"), showWarnings = FALSE)
 # List of required packages
@@ -20,7 +32,7 @@ list.of.packages <- c(
   "terra",
   "sf"
 )
-options(future.globals.maxSize= 2912896000)
+options(future.globals.maxSize= 11912896000)
 
 # Check if installed, else install
 new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
@@ -54,38 +66,6 @@ timezone = "GMT"
 loc.output <- paste0("adeHRoutput/")
 #############################################################################
 
-
-##############SKIPPED BECAUSE NO LONGER APPLICABLE AT SUBSET LEVEL########################
-# # Trajectories
-# CaribouBM.ltraj <- as.ltraj(xy = Caribou_BM[,c("E", "N")], 
-#                             date =  as.POSIXct(Caribou_BM$timestamp,
-#                                                format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
-#                             id = Caribou_BM$ANIMALID, typeII = TRUE)
-# total.path.df <- data.frame(CaribouBM.ltraj[[1]],
-#                             id = attr(CaribouBM.ltraj[[1]],
-#                                       "id"))
-# 
-# # Fill Data frame with trajectories
-# for(i in 2:length(CaribouBM.ltraj)) {
-#   total.path.df <- rbind(total.path.df,
-#                          data.frame(CaribouBM.ltraj[[i]],
-#                                     id = attr(CaribouBM.ltraj[[i]],
-#                                               "id")))
-# }
-#############################################################################
-
-# Calculate distance traveled per day and add it to the dataframe
-# total.path.df$distperday <- total.path.df$dist / (total.path.df$dt/60/60/24)
-# # Aggregate to show mean distance per day for each animal
-# path.summary <- aggregate(distperday~id, data = total.path.df, FUN = mean)
-# path.summary$sd <- aggregate(distperday~id, data = total.path.df, FUN = sd)$distperday
-# # Look at summary dataframe
-# path.summary
-
-
-######SKIPPED - WINTER ORGANIZED AS SINGLE DURING DATA SPLIT##############
-
-
 print("###########################Data Preparation Step##################################################")
 years <- unique(Caribou_BM_WI$YearSeas)
 
@@ -109,19 +89,6 @@ for(y in 1:length(years)){
   }else{next()}
 }
 Caribou_BM_WI_LI[sapply(Caribou_BM_WI_LI,function(x) all(is.na(x)))] <- NULL
-
-##Winter
-BM_WI_Traj <- list()
-for(l in 1:length(Caribou_BM_WI_LI)){
-  BM_WI_Traj[[l]] <-  as.ltraj(xy = Caribou_BM_WI_LI[[l]][,c("E", "N")], 
-                               date =  as.POSIXct(Caribou_BM_WI_LI[[l]]$timestamp,
-                                                  format = "%Y-%m-%d %H:%M:%S", tz = "GMT"),
-                               id = Caribou_BM_WI_LI[[l]]$AnimalID,
-                               typeII = TRUE)
-  names(BM_WI_Traj)[l] <- paste0("BM_WI_",unique(Caribou_BM_WI_LI[[l]]$YearSeas))
-}
-print("#############################################################################")
-
 
 
 print("#################################Trajectories#############################################")
@@ -177,8 +144,8 @@ thenames <- unlist(lapply(Traj_li, function (x) paste0(names(x),"_",id(x))))
 
 print("#############################################################################")
 
-print("##################################Home Range Analysis############################################\n\n")
-n.cores <- as.vector(future::availableCores())*.9
+print("##################################Home Range Analysis############################################")
+n.cores <- as.vector(future::availableCores())-5
 my.cluster <- parallel::makeCluster(
   n.cores, 
   type = "PSOCK"
@@ -191,24 +158,24 @@ system.time({
   BRBs_BM_WI <- foreach(i = 1:length(Traj_li),
                         .combine = c,
                         .packages = c("adehabitatHR","adehabitatLT")) %dopar% {
-                          saveRDS(BRB(Traj_li[[i]][1],
+							BRB(Traj_li[[i]][1],
                                       D = DLik_BM_WI_u[i],
                                       Tmax = 1500*60,
                                       Lmin = 2,
                                       hmin = 20,
                                       type = "UD",
-                                      grid = 4000),paste0(here("BRB_UDs"),"/",thenames[i],".Rds"))
+                                      grid = 4000)
                         }})
 stopCluster(my.cluster)
+
+print("##################################Saving BRB Analysis############################################")
+savingBRB <- function(dat, name){
+	print(j)
+	saveRDS(dat, paste("BRB_UDs/", name, ".Rds", sep = ""))
+}
+mapply(saving, BRBs_BM_CA, thenames)
 print("#############################################################################")
 # Now we calculate the BRB metrics
-# Read in the files
-
-BRBs_BM_WIf <- list.files(here("BRB_UDs"),
-                          pattern="\\.Rds$",
-                          full.names=TRUE)
-
-BRBs_BM_WI <- lapply(BRBs_BM_WIf, function(x){readRDS(x)})
 ######################
 # BRB metric: Vertices
 # This is the extraction of the home-range contours
@@ -227,33 +194,16 @@ BRBs_BM_WI <- lapply(BRBs_BM_WIf, function(x){readRDS(x)})
 
 # future approach
 print("##################################BRB Vertices############################################")
-# plan(multicore)
-# BRBs_BM_WI <- lapply(BRBs_BM_WIf, function(x){readRDS(x)})
-# system.time(BRBs_BM_WIv <- future_lapply(BRBs_BM_WI,
-#                                          FUN = function(x) {
-#                                            getverticeshr.estUD(x, percent=50)
-#                                          }))
+GettingVertices <- function(data, name){
+	Vertices <- getverticeshr.estUD(data, percent=50)
+	saveRDS(Vertices, paste("BRB_hrs/", name, "_hr_.Rds"), sep = "")
+}
 
-### parallel approach
-n.cores <- as.vector(future::availableCores())*.9
-my.cluster <- parallel::makeCluster(
-  n.cores, 
-  type = "PSOCK"
-)
+system.time(
+	homerange <- mapply(GettingVertices, BRBs_BM_CA, thenames)
+	)
 
-#register it to be used by %dopar%
-doParallel::registerDoParallel(cl = my.cluster)
 
-system.time({
-  homerange <- foreach(i = 1:length(BRBs_BM_WI),
-                       .combine = c,
-                       .packages = c("adehabitatHR","here")) %dopar% {
-                         saveRDS(getverticeshr.estUD(BRBs_BM_WI[[i]], percent=50),
-                                 paste0(here("BRB_UDs","BM","WI"),"/",thenames[i],"_hr.Rds"))
-                       }    
-})
-# Stop the parallel backend
-stopCluster(my.cluster)
 print("#############################################################################")
 ######################
 # BRB metric: getvolumeUD
@@ -271,26 +221,13 @@ print("#########################################################################
 
 #create the cluster
 print("##################################BRB Volume############################################")
-n.cores <- as.vector(future::availableCores())
-my.cluster <- parallel::makeCluster(
-  n.cores, 
-  type = "PSOCK"
-)
-
-#register it to be used by %dopar%
-doParallel::registerDoParallel(cl = my.cluster)
-
-## This currently saves as a spatVector:
-vud <- foreach(i = 1:length(BRBs_BM_WI),
-               .combine = c,
-               .packages = c("adehabitatHR","here","terra")) %dopar% {
-                 vect(getvolumeUD(BRBs_BM_WI[[i]]),
-                      paste0(here("BRB_UDs","BM","WI"),"/",
-                             thenames[i],"_vUD.shp"))    
-               }
-
-# Stop the parallel backend
-stopCluster(my.cluster)
+GettingVolume <- function(data, name){
+	Volume <- getvolumeUD(data)
+	vect(Volume, paste("BRB_vUDs/", name, "vUD.shp"))
+}
+system.time(
+	vud <- (mapply(GettingVolume, BRBs_BM_CA, thenames))
+	)
 
 # This part I had working for my big for loop.
 # It needs to be fixed for the individual animals.
