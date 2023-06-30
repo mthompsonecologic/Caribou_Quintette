@@ -170,11 +170,11 @@ stopCluster(my.cluster)
 
 print("##################################Saving BRB Analysis############################################")
 savingBRB <- function(dat, name){
-	print(j)
+	print(name)
 	saveRDS(dat, paste("BRB_UDs/", name, ".Rds", sep = ""))
 }
 system.time(
-	mapply(savingBRB, BRBs_BM_CA, thenames)
+	mapply(savingBRB, BRBs_TR_WI, thenames)
 )
 print("#############################################################################")
 # Now we calculate the BRB metrics
@@ -202,7 +202,7 @@ GettingVertices <- function(data, name){
 }
 
 system.time(
-	homerange <- mapply(GettingVertices, BRBs_BM_CA, thenames)
+	homerange <- mapply(GettingVertices, BRBs_TR_WI, thenames)
 	)
 
 
@@ -228,7 +228,7 @@ GettingVolume <- function(data, name){
 	vect(Volume, paste("BRB_vUDs/", name, "vUD.shp"))
 }
 system.time(
-	vud <- (mapply(GettingVolume, BRBs_BM_CA, thenames))
+	vud <- (mapply(GettingVolume, BRBs_TR_WI, thenames))
 	)
 
 # This part I had working for my big for loop.
@@ -250,4 +250,4 @@ system.time(for(i in 1:length(thenames)){
 })
 print("#############################################################################")
 # Save the output.
-write.csv(BRB_area, paste0(here("BRB_UDs"), "/TR_WI_BRB_areas.csv", sep=""), row.names = FALSE)
+write.csv(BRB_area, paste("BRB_UDs/", "/TR_WI_BRB_areas.csv", sep=""), row.names = FALSE)

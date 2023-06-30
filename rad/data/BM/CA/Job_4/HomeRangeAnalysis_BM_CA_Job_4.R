@@ -170,7 +170,7 @@ stopCluster(my.cluster)
 
 print("##################################Saving BRB Analysis############################################")
 savingBRB <- function(dat, name){
-	print(j)
+	print(name)
 	saveRDS(dat, paste("BRB_UDs/", name, ".Rds", sep = ""))
 }
 system.time(
@@ -250,4 +250,4 @@ system.time(for(i in 1:length(thenames)){
 })
 print("#############################################################################")
 # Save the output.
-write.csv(BRB_area, paste0(here("BRB_UDs"), "/BM_CA_BRB_areas.csv", sep=""), row.names = FALSE)
+write.csv(BRB_area, paste("BRB_UDs/", "/BM_CA_BRB_areas.csv", sep=""), row.names = FALSE)
