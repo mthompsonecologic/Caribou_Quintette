@@ -117,7 +117,7 @@ Also note:
 <li>1. Rows 89026-90567 and 91988-95549, 97452-97659 have animal ID as "QU_" or "QU_ None". These are removed later in BRB models.</li>
 <li>2. SORTTIME and DateTime min:sec timestamp is suspect from Rows 1:30 (possibly others?)</li>
 
-```{r Data_Inputs, echo=FALSE, results = "hide"}
+```{r Data_Inputs, eval=FALSE, echo=FALSE, results = "hide"}
 
 Caribou <- read.csv(paste0(here("Input Data"),"/Telemetry_QT_v6_MDT.csv"),	stringsAsFactors=FALSE,	na.strings="NA")
 Caribou$Date <- paste0(substr(Caribou$Date,1,4),"-",substr(Caribou$Date,5,6),"-",substr(Caribou$Date,7,8))
