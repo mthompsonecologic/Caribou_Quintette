@@ -1,5 +1,4 @@
 #!/usr/bin/local/python3
-import pandas as pd
 import argparse
 import os
 
@@ -43,20 +42,27 @@ def main():
 			# print(season)
 		key = sa + "_" + season
 		animalid = parsed_line[0].replace('"', "")
-		uid = key + "_" + animalid
+		yearseason = parsed_line[9]
+		uid = key + "_" + animalid + "_" + yearseason
+		# uid = key + "_" + animalid
 		data = (parsed_line[1].replace('"', ""), parsed_line[2].replace('"', ""), parsed_line[4].replace('"', ""), parsed_line[5].replace('"', ""), parsed_line[6].replace('"', ""), parsed_line[7].replace('"', ""), parsed_line[9].replace('"', ""), parsed_line[10].replace('"', ""))
+		# print(data)
 		if parsed_data.__contains__(key):
 			if parsed_data[key].__contains__(animalid):
-				parsed_data[key][animalid].append(data)
+				if parsed_data[key][animalid].__contains__(yearseason):
+					parsed_data[key][animalid][yearseason].append(data)
+				else:
+					parsed_data[key][animalid][yearseason] = list()
+					parsed_data[key][animalid][yearseason].append(data)
+					# print(len(data))
 			else:
-				parsed_data[key][animalid] = list()
-				parsed_data[key][animalid].append(data)
+				parsed_data[key][animalid] = {yearseason : list()}
+				parsed_data[key][animalid][yearseason].append(data)
 		else:
-			parsed_data[key] = dict()
-			parsed_data[key][animalid] = list()
-			parsed_data[key][animalid].append(data)
+			parsed_data[key] = {animalid : {yearseason : list()}}
+			parsed_data[key][animalid][yearseason].append(data)
 		unique_directories.add(uid)
-	print(unique_directories)
+	# print(unique_directories)
 	#Generate Directory Tree
 	for directory in unique_directories:
 		parsed_directory =  directory.split("_")
@@ -66,17 +72,21 @@ def main():
 		try:
 			os.mkdir(parent)
 		except:
-			print("Top level exist: {}".format(parent))
+			pass
+			# print("Top level exist: {}".format(parent))
 		try:
 			os.mkdir(sub_parent)
 		except:
-			print("Top level exist: {}".format(sub_parent))
+			pass
+			# print("Top level exist: {}".format(sub_parent))
 		# try:
 		# 	os.mkdir(child)
 		# except:
 		# 	print("Top level exist: {}".format(child))
-	print(len(unique_directories))
+	# print(len(unique_directories))
 	# print(len(parsed_data))
+	# Generate Summary Table
+	print("SA\tSeason\tJob\tAnimalID\tYear\tN")
 	for keys, items in parsed_data.items():
 		par_dir = "data/" + keys.replace("_", "/")
 		# print("\n\n")
@@ -90,15 +100,16 @@ def main():
 		# 	print("total checks out")
 		# SPlit into 10 animal jobs
 		whole = int(total / 10)
-		print("Whole: {}".format(whole))
+		# print("Whole: {}".format(whole))
 		remainder = total % 10
-		print("Remainder: {}".format(remainder))
-		print("Indices")
+		# print("Remainder: {}".format(remainder))
+		# print("Indices")
 		jobcounter = 0
+		unique_animal_year = set()
 		for idx in range(10, whole*10+20, 10):
 			low_dir = "{}/Job_{}".format(par_dir, jobcounter)
-			sa = par_dir.split("/")[0]
-			season = par_dir.split("/")[1]
+			sa = par_dir.split("/")[1]
+			season = par_dir.split("/")[2]
 			keys2_2 = keys2[idx-10:idx]
 			if len(keys2_2) == 0:
 				continue
@@ -106,28 +117,41 @@ def main():
 			try:
 				os.mkdir(low_dir)
 			except:
-				print("lowest level directory exist: {}".format(low_dir))
+				pass
+				# print("lowest level directory exist: {}".format(low_dir))
 			with open("{}/Job_{}.txt".format(low_dir, jobcounter), "w") as writer:
 				writer.writelines(header)
 				for subanimal in keys2_2:
-					data = items[subanimal]
-					for datum in data:
-						# print(datum)
-						line = "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n".format(
-						subanimal,
-						datum[0],
-						datum[1],
-						season,
-						datum[2],
-						datum[3],
-						datum[4],
-						datum[5],
-						sa,
-						datum[6], 
-						datum[7]
-						)
-						writer.writelines(line)
-			jobcounter += 1	
+					subanimal_dict = items[subanimal]
+					years = list(subanimal_dict.keys())
+					# print(years)
+					# print("{}\t{}\t{}\t{}{}\t\t{}".format(sa, season, jobcounter, subanimal, datum[6], len(data)))
+					for year in years:
+						data = subanimal_dict[year]
+						# print(year)
+						# print(type(data))
+						# print(len(data))
+						# print(data)
+						for datum in data:
+							# print(len(datum))
+							line = "{} \t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n".format(
+							subanimal,
+							datum[0],
+							datum[1],
+							season,
+							datum[2],
+							datum[3],
+							datum[4],
+							datum[5],
+							sa,
+							datum[6], 
+							datum[7]
+							)
+							unique_animal_year.add("{}\t{}\t{}\t{}\t{}\t{}".format(sa, season, jobcounter, subanimal, datum[6], len(data)))
+							writer.writelines(line)
+			jobcounter += 1
+		for animal_year in unique_animal_year:
+			print(animal_year)	
 		# for keys2, items2 in items.items():
 		# 	print(keys2)
 		# 	print(len(items2))

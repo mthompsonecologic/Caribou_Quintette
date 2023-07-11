@@ -240,16 +240,16 @@ system.time(
 # getvolumeUD object. The list element and item
 # calls will have to be adjusted and checked.
 
-BRB_area <- data.frame(matrix(ncol=4))
-colnames(BRB_area) <- c("id", "year", "area", "nb.reloc")
+# BRB_area <- data.frame(matrix(ncol=4))
+# colnames(BRB_area) <- c("id", "year", "area", "nb.reloc")
 
-system.time(for(i in 1:length(thenames)){
-  homerangedf <- as.data.frame(vud[i])
-  BRB_area[i,c(1:4)] <- rbind(data.frame(id = thenames[[i]],
-                                         year = substr(names(**SA**_**SEASON**_Traj[i]),7,11),
-                                         area = homerangedf[,2],
-                                         nb.reloc = nrow(**SA**_**SEASON**_Traj[[i]][[1]])))
-})
-print("#############################################################################")
-# Save the output.
-write.csv(BRB_area, paste("BRB_UDs/", "/**SA**_**SEASON**_BRB_areas.csv", sep=""), row.names = FALSE)
+# system.time(for(i in 1:length(thenames)){
+#   homerangedf <- as.data.frame(vud[i])
+#   BRB_area[i,c(1:4)] <- rbind(data.frame(id = thenames[[i]],
+#                                          year = substr(names(**SA**_**SEASON**_Traj[i]),7,11),
+#                                          area = homerangedf[,2],
+#                                          nb.reloc = nrow(**SA**_**SEASON**_Traj[[i]][[1]])))
+# })
+# print("#############################################################################")
+# # Save the output.
+# write.csv(BRB_area, paste("BRB_UDs/", "/**SA**_**SEASON**_BRB_areas.csv", sep=""), row.names = FALSE)

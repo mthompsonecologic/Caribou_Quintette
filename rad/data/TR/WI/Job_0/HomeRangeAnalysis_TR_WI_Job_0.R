@@ -145,7 +145,7 @@ thenames <- unlist(lapply(Traj_li, function (x) paste0(names(x),"_",id(x))))
 print("#############################################################################")
 
 print("##################################Home Range Analysis############################################")
-n.cores <- as.vector(future::availableCores())-5
+n.cores <- as.vector(future::availableCores())-2
 my.cluster <- parallel::makeCluster(
   n.cores, 
   type = "PSOCK"
