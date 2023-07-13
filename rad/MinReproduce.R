@@ -66,13 +66,13 @@ system.time({
 BRBs_BM_WI <- foreach(i = 1:length(Traj_li),
                       .combine = c,
                       .packages = c("adehabitatHR","adehabitatLT", "here")) %dopar% {
-                            saveRDS(BRB(Traj_li[[i]][1],
+                            BRB(Traj_li[[i]][1],
                             D = DLik[i],
                             Tmax = 1500*60,
                             Lmin = 2,
                             hmin = 20,
                             type = "UD",
-                            grid = 4000),paste0(here("BRB_UDs"),"/",thenames[i],"toy.Rds"))
+                            grid = 4000)
                         }})
 stopCluster(my.cluster)
 

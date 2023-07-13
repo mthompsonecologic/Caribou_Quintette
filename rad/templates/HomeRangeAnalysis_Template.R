@@ -171,7 +171,7 @@ stopCluster(my.cluster)
 print("##################################Saving BRB Analysis############################################")
 savingBRB <- function(dat, name){
 	print(name)
-	saveRDS(dat, paste("BRB_UDs/", name, ".Rds", sep = ""))
+	writeVector(vect(dat), paste("BRB_UDs/", name, ".shp", sep = ""))
 }
 system.time(
 	mapply(savingBRB, BRBs_**SA**_**SEASON**, thenames)
@@ -198,7 +198,7 @@ print("#########################################################################
 print("##################################BRB Vertices############################################")
 GettingVertices <- function(data, name){
 	Vertices <- getverticeshr.estUD(data, percent=50)
-	saveRDS(Vertices, paste("BRB_hrs/", name, "_hr.Rds", sep = ""))
+	writeVector(vect(Vertices), paste("BRB_hrs/", name, "_hr.shp", sep = ""))
 }
 
 system.time(
@@ -225,8 +225,7 @@ print("#########################################################################
 print("##################################BRB Volume############################################")
 GettingVolume <- function(data, name){
 	Volume <- getvolumeUD(data)
-	Volume_V <- vect(Volume)
-	writeVector(Volume_V, paste("BRB_vUDs/", name, "_vUD.shp", sep = ""))
+	writeVector(vect(Volume), paste("BRB_vUDs/", name, "_vUD.shp", sep = ""))
 	# vect(Volume, paste("BRB_vUDs/", name, "vUD.shp", sep = ""))
 }
 system.time(
