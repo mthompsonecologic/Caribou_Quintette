@@ -171,7 +171,7 @@ stopCluster(my.cluster)
 print("##################################Saving BRB Analysis############################################")
 savingBRB <- function(dat, name){
 	print(name)
-	writeVector(vect(dat), paste("BRB_UDs/", name, ".shp", sep = ""))
+	saveRDS(dat, paste("BRB_UDs/", name, ".Rds", sep = ""))
 }
 system.time(
 	mapply(savingBRB, BRBs_BM_WI, thenames)
@@ -198,7 +198,7 @@ print("#########################################################################
 print("##################################BRB Vertices############################################")
 GettingVertices <- function(data, name){
 	Vertices <- getverticeshr.estUD(data, percent=50)
-	writeVector(vect(Vertices), paste("BRB_hrs/", name, "_hr.shp", sep = ""))
+	saveRDS(Vertices, paste("BRB_hrs/", name, "_hr.Rds", sep = ""))
 }
 
 system.time(
@@ -225,7 +225,8 @@ print("#########################################################################
 print("##################################BRB Volume############################################")
 GettingVolume <- function(data, name){
 	Volume <- getvolumeUD(data)
-	writeVector(vect(Volume), paste("BRB_vUDs/", name, "_vUD.shp", sep = ""))
+	Volume_V <- vect(Volume)
+	writeVector(Volume_V, paste("BRB_vUDs/", name, "_vUD.shp", sep = ""))
 	# vect(Volume, paste("BRB_vUDs/", name, "vUD.shp", sep = ""))
 }
 system.time(
@@ -239,16 +240,16 @@ system.time(
 # getvolumeUD object. The list element and item
 # calls will have to be adjusted and checked.
 
-# BRB_area <- data.frame(matrix(ncol=4))
-# colnames(BRB_area) <- c("id", "year", "area", "nb.reloc")
+BRB_area <- data.frame(matrix(ncol=4))
+colnames(BRB_area) <- c("id", "year", "area", "nb.reloc")
 
-# system.time(for(i in 1:length(thenames)){
-#   homerangedf <- as.data.frame(vud[i])
-#   BRB_area[i,c(1:4)] <- rbind(data.frame(id = thenames[[i]],
-#                                          year = substr(names(BM_WI_Traj[i]),7,11),
-#                                          area = homerangedf[,2],
-#                                          nb.reloc = nrow(BM_WI_Traj[[i]][[1]])))
-# })
-# print("#############################################################################")
-# # Save the output.
-# write.csv(BRB_area, paste("BRB_UDs/", "/BM_WI_BRB_areas.csv", sep=""), row.names = FALSE)
+system.time(for(i in 1:length(thenames)){
+  homerangedf <- as.data.frame(vud[i])
+  BRB_area[i,c(1:4)] <- rbind(data.frame(id = name_burst[[i]],
+                                         year = substr(names(BM_WI_Traj[i]),7,11),
+                                         area = homerangedf[,2],
+                                         nb.reloc = nrow(BM_WI_Traj[[i]][[1]])))
+})
+print("#############################################################################")
+# Save the output.
+write.csv(BRB_area, paste("BRB_UDs/", "/BM_WI_BRB_areas.csv", sep=""), row.names = FALSE)
