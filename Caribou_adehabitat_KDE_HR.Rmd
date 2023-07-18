@@ -1947,6 +1947,12 @@ Export the final data for the BRB models and plot
 rownames(Caribou_TR) <- c(1:nrow(Caribou_TR))
 Caribou_BMTR <- rbind(Caribou_TR,Caribou_BM)
 
+df$address[df$address == 'Orange St'] <- df$work_address
+
+
+Caribou_BMTR[Caribou_BMTR$areatag == "Roman",9] <- "TR"
+Caribou_BMTR[Caribou_BMTR$areatag == "Bullmoose",9] <- "BM"
+
 write.csv(Caribou_BMTR,paste0(here("Input Data"), "/Caribou_noclip.csv"), row.names = FALSE) # For BRB
 Caribou_BMTR <- read.csv(paste0(here("Input Data"), "/Caribou_noclip.csv"))
 
