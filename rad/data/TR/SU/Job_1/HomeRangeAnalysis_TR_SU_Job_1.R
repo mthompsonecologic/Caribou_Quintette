@@ -1,7 +1,7 @@
 gc()
 gcinfo(TRUE)
 wd <- getwd()
-newwd <- paste("~/Github/Caribou_Quintette/rad", "data", "TR/SU/Job_1/", sep = "/")
+newwd <- paste("/gpfs/scratch/an-rdorador/sat-caribou", "data", "TR/SU/Job_1/", sep = "/")
 setwd(newwd)
 # Create Directories for Outputs
 # BRB Files
@@ -240,16 +240,16 @@ system.time(
 # getvolumeUD object. The list element and item
 # calls will have to be adjusted and checked.
 
-BRB_area <- data.frame(matrix(ncol=4))
-colnames(BRB_area) <- c("id", "year", "area", "nb.reloc")
+# BRB_area <- data.frame(matrix(ncol=4))
+# colnames(BRB_area) <- c("id", "year", "area", "nb.reloc")
 
-system.time(for(i in 1:length(thenames)){
-  homerangedf <- as.data.frame(vud[i])
-  BRB_area[i,c(1:4)] <- rbind(data.frame(id = name_burst[[i]],
-                                         year = substr(names(TR_SU_Traj[i]),7,11),
-                                         area = homerangedf[,2],
-                                         nb.reloc = nrow(TR_SU_Traj[[i]][[1]])))
-})
-print("#############################################################################")
-# Save the output.
-write.csv(BRB_area, paste("BRB_UDs/", "/TR_SU_BRB_areas.csv", sep=""), row.names = FALSE)
+# system.time(for(i in 1:length(thenames)){
+#   homerangedf <- as.data.frame(vud[i])
+#   BRB_area[i,c(1:4)] <- rbind(data.frame(id = thenames[[i]],
+#                                          year = substr(names(TR_SU_Traj[i]),7,11),
+#                                          area = homerangedf[,2],
+#                                          nb.reloc = nrow(TR_SU_Traj[[i]][[1]])))
+# })
+# print("#############################################################################")
+# # Save the output.
+# write.csv(BRB_area, paste("BRB_UDs/", "/TR_SU_BRB_areas.csv", sep=""), row.names = FALSE)
