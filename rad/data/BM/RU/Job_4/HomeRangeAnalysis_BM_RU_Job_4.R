@@ -16,6 +16,10 @@ if (dir.exists("BRB_hrs") == FALSE){
 if (dir.exists("BRB_vUDs") == FALSE){
 	dir.create("BRB_vUDs")
 }
+# Area Files
+if (dir.exists("BRB_area") == FALSE){
+	dir.create("BRB_area")
+}
 # dir.create(file.path(newwd, "BRB_UDs"), showWarnings = FALSE)
 # List of required packages
 list.of.packages <- c(
@@ -30,7 +34,8 @@ list.of.packages <- c(
   "adehabitatHR",
   "rgdal",
   "terra",
-  "sf"
+  "sf",
+  "tools"
 )
 options(future.globals.maxSize= 11912896000)
 
@@ -140,43 +145,43 @@ for(y in 1:length(Traj_len)){
 }
 
 ## The BRBs_BM_WI need to be named. The names are contained here:
-thenames <- unlist(lapply(Traj_li, function (x) paste0(names(x),"_",id(x))))
+# thenames <- unlist(lapply(Traj_li, function (x) paste0(names(x),"_",id(x))))
 
-print("#############################################################################")
+# print("#############################################################################")
 
-print("##################################Home Range Analysis############################################")
-n.cores <- as.vector(future::availableCores())-5
-my.cluster <- parallel::makeCluster(
-  n.cores, 
-  type = "PSOCK"
-)
+# print("##################################Home Range Analysis############################################")
+# n.cores <- as.vector(future::availableCores())-5
+# my.cluster <- parallel::makeCluster(
+#   n.cores, 
+#   type = "PSOCK"
+# )
 
-#register it to be used by %dopar%
-doParallel::registerDoParallel(cl = my.cluster)
-print("##################################BRB Analysis############################################")
-system.time({
-  BRBs_BM_RU <- foreach(i = 1:length(Traj_li),
-                        .combine = c,
-                        .packages = c("adehabitatHR","adehabitatLT")) %dopar% {
-							BRB(Traj_li[[i]][1],
-                                      D = DLik_BM_RU_u[i],
-                                      Tmax = 1500*60,
-                                      Lmin = 2,
-                                      hmin = 20,
-                                      type = "UD",
-                                      grid = 4000)
-                        }})
-stopCluster(my.cluster)
+# #register it to be used by %dopar%
+# doParallel::registerDoParallel(cl = my.cluster)
+# print("##################################BRB Analysis############################################")
+# system.time({
+#   BRBs_BM_RU <- foreach(i = 1:length(Traj_li),
+#                         .combine = c,
+#                         .packages = c("adehabitatHR","adehabitatLT")) %dopar% {
+# 							BRB(Traj_li[[i]][1],
+#                                       D = DLik_BM_RU_u[i],
+#                                       Tmax = 1500*60,
+#                                       Lmin = 2,
+#                                       hmin = 20,
+#                                       type = "UD",
+#                                       grid = 4000)
+#                         }})
+# stopCluster(my.cluster)
 
-print("##################################Saving BRB Analysis############################################")
-savingBRB <- function(dat, name){
-	print(name)
-	saveRDS(dat, paste("BRB_UDs/", name, ".Rds", sep = ""))
-}
-system.time(
-	mapply(savingBRB, BRBs_BM_RU, thenames)
-)
-print("#############################################################################")
+# print("##################################Saving BRB Analysis############################################")
+# savingBRB <- function(dat, name){
+# 	print(name)
+# 	saveRDS(dat, paste("BRB_UDs/", name, ".Rds", sep = ""))
+# }
+# system.time(
+# 	mapply(savingBRB, BRBs_BM_RU, thenames)
+# )
+# print("#############################################################################")
 # Now we calculate the BRB metrics
 ######################
 # BRB metric: Vertices
@@ -195,18 +200,18 @@ print("#########################################################################
 ## approach ran faster.
 
 # future approach
-print("##################################BRB Vertices############################################")
-GettingVertices <- function(data, name){
-	Vertices <- getverticeshr.estUD(data, percent=50)
-	saveRDS(Vertices, paste("BRB_hrs/", name, "_hr.Rds", sep = ""))
-}
+# print("##################################BRB Vertices############################################")
+# GettingVertices <- function(data, name){
+# 	Vertices <- getverticeshr.estUD(data, percent=50)
+# 	saveRDS(Vertices, paste("BRB_hrs/", name, "_hr.Rds", sep = ""))
+# }
 
-system.time(
-	homerange <- mapply(GettingVertices, BRBs_BM_RU, thenames)
-	)
+# system.time(
+# 	homerange <- mapply(GettingVertices, BRBs_BM_RU, thenames)
+# 	)
 
 
-print("#############################################################################")
+# print("#############################################################################")
 ######################
 # BRB metric: getvolumeUD
 # Description from adehabitat package:
@@ -222,11 +227,19 @@ print("#########################################################################
 ######################
 
 #create the cluster
+# RAD - Read in BRB analysis from BRB_UDs folder
+filenames <- list.files(pattern = "BRB_UDs/*Rds$")
+thenames <- file_path_sans_ext(filenames)
+readRDSData <- function(dat){
+	readRDS(dat)
+}
+BRBs_BM_RU <- mapply(readRDSData, filenames)
+
 print("##################################BRB Volume############################################")
 GettingVolume <- function(data, name){
-	Volume <- getvolumeUD(data)
-	Volume_V <- vect(Volume)
-	writeVector(Volume_V, paste("BRB_vUDs/", name, "_vUD.shp", sep = ""))
+	getvolumeUD(data)
+	# Volume_V <- vect(Volume)
+	# writeVector(Volume_V, paste("BRB_vUDs/", name, "_vUD.shp", sep = ""))
 	# vect(Volume, paste("BRB_vUDs/", name, "vUD.shp", sep = ""))
 }
 system.time(
@@ -240,16 +253,20 @@ system.time(
 # getvolumeUD object. The list element and item
 # calls will have to be adjusted and checked.
 
-# BRB_area <- data.frame(matrix(ncol=4))
-# colnames(BRB_area) <- c("id", "year", "area", "nb.reloc")
 
-# system.time(for(i in 1:length(thenames)){
-#   homerangedf <- as.data.frame(vud[i])
-#   BRB_area[i,c(1:4)] <- rbind(data.frame(id = thenames[[i]],
-#                                          year = substr(names(BM_RU_Traj[i]),7,11),
-#                                          area = homerangedf[,2],
-#                                          nb.reloc = nrow(BM_RU_Traj[[i]][[1]])))
-# })
+# Vignette do analysis seen but replace 95 with 50%
+BRB_area <- data.frame(matrix(ncol=4))
+colnames(BRB_area) <- c("id", "year", "area", "nb.reloc")
+
+system.time(for(i in 1:length(thenames)){
+  hr50 <- as.data.frame(vud[i])[,1]
+  hr50 <-  as.numeric(hr50 <= 50)
+  hr50 <- data.frame(hr50)
+  BRB_area[i,c(1:4)] <- rbind(data.frame(id = thenames[[i]],
+                                         year = substr(names(BM_RU_Traj[i]),7,11),
+                                         area = hr50[,1],
+                                         nb.reloc = nrow(BM_RU_Traj[[i]][[1]])))
+})
 # print("#############################################################################")
 # # Save the output.
-# write.csv(BRB_area, paste("BRB_UDs/", "/BM_RU_BRB_areas.csv", sep=""), row.names = FALSE)
+write.csv(BRB_area, paste("BRB_area/", "/BM_RU_BRB_areas.csv", sep=""), row.names = FALSE)
