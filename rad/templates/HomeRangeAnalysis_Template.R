@@ -146,7 +146,8 @@ for(y in 1:length(Traj_len)){
 
 ## The BRBs_BM_WI need to be named. The names are contained here:
 thenames <- unlist(lapply(Traj_li, function (x) paste0(names(x),"_",id(x))))
-
+filenames <- gsub(" ", ".Rds", thenames)
+filepaths <- paste0("BRB_UDs/", filenames)
 # print("#############################################################################")
 
 # print("##################################Home Range Analysis############################################")
@@ -201,14 +202,16 @@ thenames <- unlist(lapply(Traj_li, function (x) paste0(names(x),"_",id(x))))
 
 # future approach
 # print("##################################BRB Vertices############################################")
-# GettingVertices <- function(data, name){
-# 	Vertices <- getverticeshr.estUD(data, percent=50)
-# 	saveRDS(Vertices, paste("BRB_hrs/", name, "_hr.Rds", sep = ""))
-# }
+# Read in UD
+BRBs_**SA**_**SEASON** <- mapply(readRDS, filepaths)
+GettingVertices <- function(data, name){
+	Vertices <- getverticeshr.estUD(data, percent=50)
+	saveRDS(Vertices, paste("BRB_hrs/", name, "_hr.Rds", sep = ""))
+}
 
-# system.time(
-# 	homerange <- mapply(GettingVertices, BRBs_**SA**_**SEASON**, thenames)
-# 	)
+system.time(
+	homerange <- mapply(GettingVertices, BRBs_**SA**_**SEASON**, thenames)
+	)
 
 
 # print("#############################################################################")
@@ -227,24 +230,16 @@ thenames <- unlist(lapply(Traj_li, function (x) paste0(names(x),"_",id(x))))
 ######################
 
 #create the cluster
-# RAD - Read in BRB analysis from BRB_UDs folder
-filenames <- list.files(pattern = "BRB_vUDs/*shp$")
-thenames <- file_path_sans_ext(filenames)
-readData <- function(dat){
-	vect(dat)
-}
-BRBs_**SA**_**SEASON** <- mapply(readRDSData, filenames)
-
-print("##################################BRB Volume############################################")
-GettingVolume <- function(data, name){
-	getvolumeUD(data)
+# print("##################################BRB Volume############################################")
+# GettingVolume <- function(data, name){
+# 	getvolumeUD(data)
 	# Volume_V <- vect(Volume)
 	# writeVector(Volume_V, paste("BRB_vUDs/", name, "_vUD.shp", sep = ""))
 	# vect(Volume, paste("BRB_vUDs/", name, "vUD.shp", sep = ""))
 }
-system.time(
-	vud <- (mapply(GettingVolume, BRBs_**SA**_**SEASON**, thenames))
-	)
+# system.time(
+# 	vud <- (mapply(GettingVolume, BRBs_**SA**_**SEASON**, thenames))
+# 	)
 
 # This part I had working for my big for loop.
 # It needs to be fixed for the individual animals.
@@ -257,15 +252,22 @@ system.time(
 # Vignette do analysis seen but replace 95 with 50%
 BRB_area <- data.frame(matrix(ncol=4))
 colnames(BRB_area) <- c("id", "year", "area", "nb.reloc")
+Caribou_**SA**_**SEASON**$AnimalID <- trimws(Caribou_**SA**_**SEASON**$AnimalID, which = c("right"))
 
 system.time(for(i in 1:length(thenames)){
-  hr50 <- as.data.frame(vud[i])[,1]
-  hr50 <-  as.numeric(hr50 <= 50)
-  hr50 <- data.frame(hr50)
-  BRB_area[i,c(1:4)] <- rbind(data.frame(id = thenames[[i]],
-                                         year = substr(names(**SA**_**SEASON**_Traj[i]),7,11),
-                                         area = hr50[,1],
-                                         nb.reloc = nrow(**SA**_**SEASON**_Traj[[i]][[1]])))
+  hr <- readRDS(filepaths[i])
+  area <- hr$area
+  id =  thenames[[i]]
+  parsed_id = strsplit(id, split="_")
+  year = parsed_id[[1]][3]
+  animal = parsed_id[[1]][4]
+  season = parsed_id[[1]][2]
+  dat <- subset(Caribou_**SA**_**SEASON**, AnimalID == animal & YearSeas == year)
+  nb.reloc = length(dat[[1]])
+  BRB_area[i,c(1:4)] <- rbind(data.frame(id = animal,
+                                         year = year,
+                                         area = area,
+                                         nb.reloc = nb.reloc))
 })
 # print("#############################################################################")
 # # Save the output.

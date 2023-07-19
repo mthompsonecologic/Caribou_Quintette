@@ -146,7 +146,6 @@ for(y in 1:length(Traj_len)){
 
 ## The BRBs_BM_WI need to be named. The names are contained here:
 thenames <- unlist(lapply(Traj_li, function (x) paste0(names(x),"_",id(x))))
-filenames <- gsub(" ", "_hr.Rds", thenames)
 # print("#############################################################################")
 
 # print("##################################Home Range Analysis############################################")
@@ -201,14 +200,18 @@ filenames <- gsub(" ", "_hr.Rds", thenames)
 
 # future approach
 # print("##################################BRB Vertices############################################")
-# GettingVertices <- function(data, name){
-# 	Vertices <- getverticeshr.estUD(data, percent=50)
-# 	saveRDS(Vertices, paste("BRB_hrs/", name, "_hr.Rds", sep = ""))
-# }
+BRBs_BM_CA <- mapply(readRDS, filepaths)
+GettingVertices <- function(data, name){
+	Vertices <- getverticeshr.estUD(data, percent=50)
+	saveRDS(Vertices, paste("BRB_hrs/", name, "_hr.Rds", sep = ""))
+}
 
-# system.time(
-# 	homerange <- mapply(GettingVertices, BRBs_BM_CA, thenames)
-# 	)
+system.time(
+	homerange <- mapply(GettingVertices, BRBs_BM_CA, thenames)
+	)
+system.time(
+homerange <- mapply(GettingVertices, a, b)
+)
 
 
 # print("#############################################################################")
@@ -229,9 +232,6 @@ filenames <- gsub(" ", "_hr.Rds", thenames)
 #create the cluster
 # RAD - Read in BRB analysis from BRB_UDs folder
 # filenames <- list.files(pattern = "BRB_vUDs/*Rds$")
-thenames <- file_path_sans_ext(filenames)
-filepaths <- paste0("BRB_hrs/", filenames)
-
 
 
 # print("##################################BRB Volume############################################")
@@ -257,6 +257,7 @@ filepaths <- paste0("BRB_hrs/", filenames)
 BRB_area <- data.frame(matrix(ncol=4))
 colnames(BRB_area) <- c("id", "year", "area", "nb.reloc")
 Caribou_BM_CA$AnimalID <- trimws(Caribou_BM_CA$AnimalID, which = c("right"))
+
 system.time(for(i in 1:length(thenames)){
   hr <- readRDS(filepaths[i])
   area <- hr$area
