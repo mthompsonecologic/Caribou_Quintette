@@ -256,23 +256,21 @@ filepaths <- paste0("BRB_hrs/", filenames)
 # Vignette do analysis seen but replace 95 with 50%
 BRB_area <- data.frame(matrix(ncol=4))
 colnames(BRB_area) <- c("id", "year", "area", "nb.reloc")
-
+Caribou_BM_CA$AnimalID <- trimws(Caribou_BM_CA$AnimalID, which = c("right"))
 system.time(for(i in 1:length(thenames)){
   hr <- readRDS(filepaths[i])
-  area <- hr$area 
-#   BRB_area[i,c(1:4)] <- rbind(data.frame(id = thenames[[i]],
-#                                          year = substr(names(BM_CA_Traj[i]),7,11),
-#                                          area = area,
-#                                          nb.reloc = nrow(BM_CA_Traj[[i]][[1]])))
-})
-system.time(for(i in 1:2){
-  hr50 <- as.data.frame(vud[i])
-  hr50 <-  as.numeric(hr50 <= 50)
-  hr50 <- data.frame(hr50)
-  BRB_area[i,c(1:4)] <- rbind(data.frame(id = thenames[[i]],
-                                         year = substr(names(BM_CA_Traj[i]),7,11),
-                                         area = hr50[,1],
-                                         nb.reloc = nrow(BM_CA_Traj[[i]][[1]])))
+  area <- hr$area
+  id =  thenames[[i]]
+  parsed_id = strsplit(id, split="_")
+  year = parsed_id[[1]][3]
+  animal = parsed_id[[1]][4]
+  season = parsed_id[[1]][2]
+  dat <- subset(Caribou_BM_CA, AnimalID == animal & YearSeas == year)
+  nb.reloc = length(dat[[1]])
+  BRB_area[i,c(1:4)] <- rbind(data.frame(id = animal,
+                                         year = year,
+                                         area = area,
+                                         nb.reloc = nb.reloc))
 })
 # print("#############################################################################")
 # # Save the output.
