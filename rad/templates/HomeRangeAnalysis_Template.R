@@ -145,7 +145,7 @@ for(y in 1:length(Traj_len)){
 }
 
 ## The BRBs_BM_WI need to be named. The names are contained here:
-# thenames <- unlist(lapply(Traj_li, function (x) paste0(names(x),"_",id(x))))
+thenames <- unlist(lapply(Traj_li, function (x) paste0(names(x),"_",id(x))))
 
 # print("#############################################################################")
 
@@ -228,10 +228,10 @@ for(y in 1:length(Traj_len)){
 
 #create the cluster
 # RAD - Read in BRB analysis from BRB_UDs folder
-filenames <- list.files(pattern = "BRB_UDs/*Rds$")
+filenames <- list.files(pattern = "BRB_vUDs/*shp$")
 thenames <- file_path_sans_ext(filenames)
-readRDSData <- function(dat){
-	readRDS(dat)
+readData <- function(dat){
+	vect(dat)
 }
 BRBs_**SA**_**SEASON** <- mapply(readRDSData, filenames)
 
