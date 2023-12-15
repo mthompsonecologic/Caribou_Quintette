@@ -23,7 +23,7 @@ list.of.packages <- c(
 "adehabitatLT",
 "adehabitatHR",
 "stringr",
-"rgdal",
+#"rgdal",
 "here",
 "terra",
 "stampr",
@@ -38,7 +38,8 @@ list.of.packages <- c(
 "dplyr",
 "FSA",
 "movecost",
-"patchwork"
+"patchwork",
+"leastcostpath"
 )
 
 new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
@@ -58,136 +59,941 @@ for(package.i in list.of.packages){
 }
 ```
 
-## Individual centroids
+## Home Range: individual 50% BRB Upload
 
-This code chunk is written to calculate the centriod of the BRB homerange estimation for each individual within year and season. These centroids are subsequently used to calculate the individual BRB centroid distance to the aggregate centroid, by season and by year.
+Each individual BRB 50% home range is loaded by study area and season (WI, CA, SU, RU). The imported files were created in Caribou_Indiv_traj_BRB.Rmd under the four season model.
 
 ```{r , echo=FALSE, include = FALSE, message = FALSE, warning = FALSE, results = 'hide', fig.show = 'hide'}
 
-#Bullmoose
-Ind_BRB_UDdir <- gsub(".shp", "",dir(here("BRB_UDs"), pattern="^(BM_WI).{1,}(shp)"))
-
-
 ## Load and parse the seasonal data:
-ff <- list.files(here("BRB_UDs"),
-                 pattern="^(BM_WI).{1,}(shp)",
+BMWI <- list.files(here("BRB_UDs"),
+                 pattern=".*BM_WI.*\\.shp$",
                  full.names=TRUE)
-
-seasonalf <- lapply(ff, shapefile)
-names(seasonalf) <- list.files(here("BRB_UDs"),
-                               pattern="^(BM_WI).{1,}(shp)",
+BMWI_vec <- lapply(BMWI, vect)
+names(BMWI_vec) <- list.files(here("BRB_UDs"),
+                               pattern=".*BM_WI.*\\.shp$",
                                full.names=FALSE)
 
-names(seasonalf) <- substr(names(seasonalf),
-                           1,
-                           nchar(names(seasonalf[1]))-4
-                           ) # Reduce end of string
+BMCA <- list.files(here("BRB_UDs"),
+                 pattern=".*BM_CA.*\\.shp$",
+                 full.names=TRUE)
+BMCA_vec <- lapply(BMCA, vect)
+names(BMCA_vec) <- list.files(here("BRB_UDs"),
+                               pattern=".*BM_CA.*\\.shp$",
+                               full.names=FALSE)
+
+BMSU <- list.files(here("BRB_UDs"),
+                 pattern=".*BM_SU.*\\.shp$",
+                 full.names=TRUE)
+BMSU_vec <- lapply(BMSU, vect)
+names(BMSU_vec) <- list.files(here("BRB_UDs"),
+                               pattern=".*BM_SU.*\\.shp$",
+                               full.names=FALSE)
+
+BMRU <- list.files(here("BRB_UDs"),
+                 pattern=".*BM_RU.*\\.shp$",
+                 full.names=TRUE)
+BMRU_vec <- lapply(BMRU, vect)
+names(BMRU_vec) <- list.files(here("BRB_UDs"),
+                               pattern=".*BM_RU.*\\.shp$",
+                               full.names=FALSE)
+
+TRWI <- list.files(here("BRB_UDs"),
+                 pattern=".*TR_WI.*\\.shp$",
+                 full.names=TRUE)
+TRWI_vec <- lapply(TRWI, vect)
+names(TRWI_vec) <- list.files(here("BRB_UDs"),
+                               pattern=".*TR_WI.*\\.shp$",
+                               full.names=FALSE)
 
 
-for(i in 1:length(Ind_BRB_UDdir)){
-  name = Ind_BRB_UDdir[i]
-  BM_WI_BRBs[i] <- rgdal::readOGR(paste0(here("BRB_UDs"),"/"), name)
-  names(BM_WI_BRBs[i]) <- name
-}
+TRCA <- list.files(here("BRB_UDs"),
+                 pattern=".*TR_CA.*\\.shp$",
+                 full.names=TRUE)
+TRCA_vec <- lapply(TRCA, vect)
+names(TRCA_vec) <- list.files(here("BRB_UDs"),
+                               pattern=".*TR_CA.*\\.shp$",
+                               full.names=FALSE)
 
-names(BM_WI_BRBs) <- substr(Ind_BRB_UDdir,7,45)
-years <- unique(substr(Ind_BRB_UDdir,7,10))
-count_years <- as.data.frame(substr(names(BM_WI_BRBs),1,4))
+TRSU <- list.files(here("BRB_UDs"),
+                 pattern=".*TR_SU.*\\.shp$",
+                 full.names=TRUE)
+TRSU_vec <- lapply(TRSU, vect)
+names(TRSU_vec) <- list.files(here("BRB_UDs"),
+                               pattern=".*TR_SU.*\\.shp$",
+                               full.names=FALSE)
 
+TRRU <- list.files(here("BRB_UDs"),
+                 pattern=".*TR_RU.*\\.shp$",
+                 full.names=TRUE)
+TRRU_vec <- lapply(TRRU, vect)
+names(TRRU_vec) <- list.files(here("BRB_UDs"),
+                               pattern=".*TR_RU.*\\.shp$",
+                               full.names=FALSE)
 
-centroidL <- list()
-centroidLn <- list()
-clc = 1
+#names(seasonalf) <- substr(names(seasonalf),
+#                           1,
+#                           nchar(names(seasonalf[1]))-4
+#                           ) # Reduce end of string
 
-for(i in 1:length(BM_WI_BRBs)){
- for(y in 1:length(count_years[which(count_years == years[clc]),])){
-      tempv <- vect(BM_WI_BRBs[[clc]])  
-      centroidL[[clc]] <- st_centroid(st_as_sf(tempv))
-      centroidLn[clc] <- paste0(names(BM_WI_BRBs)[i],"_",y,"_centroid")
+##
+# car046 duplicate test
+# originally had car046 in BM
+# plotted here to see that the
+# UDs were the same result. It
+# was calculated 2x for BM and TR.
+# The duplicate was deleted and corrected.
+
+#TRWI46 <- TRWI_vec[grep('car046', names(TRWI_vec))]
+#TRRU46 <- TRRU_vec[grep('car046', names(TRRU_vec))]
+#TRCA46 <- TRCA_vec[grep('car046', names(TRCA_vec))]
+#BMWI46 <- BMWI_vec[grep('car046', names(BMWI_vec))]
+#BMRU46 <- BMRU_vec[grep('car046', names(BMRU_vec))]
+#BMCA46 <- BMCA_vec[grep('car046', names(BMCA_vec))]
+
+```
+
+# Bullmoose Individual Centroids
+
+This code chunk calculates the centroid of the 50% BRB homerange estimated for each individual within years and seasons. These centroids are subsequently used to calculate the individual BRB centroid distance to the aggregate centroid, by season and by year.
+
+```{r , echo=FALSE, include = FALSE, message = FALSE, warning = FALSE, results = 'hide', fig.show = 'hide'}
+
+# Winter
+
+## Calculate the centroids of each animal 50% BRB in each year in BMWI:
+# First, get the vector of the animal names:
+BMWI_names <- substr(names(BMWI_vec),16,30)
+BMWI_names <- strsplit(BMWI_names, "_")
+BMWI_names <- unlist(BMWI_names)
+BMWI_names <- BMWI_names[seq(1,length(BMWI_names),2)]
+
+BMWI_years <- unique(substr(names(BMWI_vec),11,14))
+count_years <- as.data.frame(substr(names(BMWI_vec),11,14))
+
+BMWI_centroidL <- list()
+BMWI_centroidLn <- list()
+
+for(i in 1:length(BMWI_vec)){
+      tempv <- BMWI_vec[[i]]
+      BMWI_centroidL[[i]] <- centroids(tempv)
+      crs(BMWI_centroidL[[i]]) <- "EPSG:26910"
+      BMWI_centroidLn[i] <- paste0(BMWI_names[i],"_",count_years[i,1],"_centroid")
       }
-  clc = clc + 1
+
+names(BMWI_centroidL) <- unlist(BMWI_centroidLn)
+
+## Calculate the centroid of the aggregated union of animals by year:
+
+BMWI_Uvec <- list()
+BMWIagg_centroidL <- list()
+BMWIagg_centroidLn <- list()
+
+for(i in 1:length(BMWI_years)){
+  cond <- BMWI_vec[which(substr(names(BMWI_vec),11,14) == BMWI_years[i])]
+  BMWI_Uvec[i] <- aggregate(vect(svc(cond)))
+  BMWIagg_centroidL[i] <- centroids(BMWI_Uvec[[i]])
+  crs(BMWIagg_centroidL[[i]]) <- "EPSG:26910"
+  BMWIagg_centroidLn[i] <- paste0("BMWI_cent_",BMWI_years[i])
 }
 
-BMBRB_centroidL <- centroidL
-BM_centroidLn <- unlist(centroidLn)
-names(BMBRB_centroidL) <- BM_centroidLn
+names(BMWIagg_centroidL) <- unlist(BMWIagg_centroidLn)
 
-## Roman
-TR_WI_BRBs <- list()
-Ind_BRB_UDdir <- gsub(".shp", "",dir(here("BRB_UDs"), pattern="^(TR_WI).{1,}(shp)"))
+# Calving
 
+## Calculate the centroids of each animal 50% BRB in each year in BMCA:
+# First, get the vector of the animal names:
+BMCA_names <- substr(names(BMCA_vec),16,30)
+BMCA_names <- strsplit(BMCA_names, "_")
+BMCA_names <- unlist(BMCA_names)
+BMCA_names <- BMCA_names[seq(1,length(BMCA_names),2)]
 
-for(i in 1:length(Ind_BRB_UDdir)){
-  name = Ind_BRB_UDdir[i]
-  TR_WI_BRBs[i] <- rgdal::readOGR(paste0(here("BRB_UDs"),"/"), name)
-  names(TR_WI_BRBs[i]) <- name
-}
+BMCA_years <- unique(substr(names(BMCA_vec),11,14))
+count_years <- as.data.frame(substr(names(BMCA_vec),11,14))
 
-names(TR_WI_BRBs) <- substr(Ind_BRB_UDdir,7,45)
-years <- unique(substr(Ind_BRB_UDdir,7,10))
-count_years <- as.data.frame(substr(names(TR_WI_BRBs),1,4))
+BMCA_centroidL <- list()
+BMCA_centroidLn <- list()
 
-
-centroidL <- list()
-centroidLn <- list()
-clc = 1
-
-for(i in 1:length(TR_WI_BRBs)){
- for(y in 1:length(count_years[which(count_years == years[clc]),])){
-      tempv <- vect(TR_WI_BRBs[[clc]])  
-      centroidL[[clc]] <- st_centroid(st_as_sf(tempv))
-      centroidLn[clc] <- paste0(names(TR_WI_BRBs)[i],"_",y,"_centroid")
+for(i in 1:length(BMCA_vec)){
+      tempv <- BMCA_vec[[i]]
+      BMCA_centroidL[[i]] <- centroids(tempv)
+      crs(BMCA_centroidL[[i]]) <- "EPSG:26910"
+      BMCA_centroidLn[i] <- paste0(BMCA_names[i],"_",count_years[i,1],"_centroid")
       }
-  clc = clc + 1
+
+names(BMCA_centroidL) <- unlist(BMCA_centroidLn)
+
+## Calculate the centroid of the aggregated union of animals by year:
+
+BMCA_Uvec <- list()
+BMCAagg_centroidL <- list()
+BMCAagg_centroidLn <- list()
+
+for(i in 1:length(BMCA_years)){
+  cond <- BMCA_vec[which(substr(names(BMCA_vec),11,14) == BMCA_years[i])]
+  BMCA_Uvec[i] <- aggregate(vect(svc(cond)))
+  BMCAagg_centroidL[i] <- centroids(BMCA_Uvec[[i]])
+  crs(BMCAagg_centroidL[[i]]) <- "EPSG:26910"
+  BMCAagg_centroidLn[i] <- paste0("BMCA_cent_",BMCA_years[i])
 }
 
-TRBRB_centroidL <- centroidL
-TR_centroidLn <- unlist(centroidLn)
-names(TRBRB_centroidL) <- TR_centroidLn
+names(BMCAagg_centroidL) <- unlist(BMCAagg_centroidLn)
+
+# Summer
+## Calculate the centroids of each animal 50% BRB in each year in BMSU:
+# First, get the vector of the animal names:
+BMSU_names <- substr(names(BMSU_vec),16,30)
+BMSU_names <- strsplit(BMSU_names, "_")
+BMSU_names <- unlist(BMSU_names)
+BMSU_names <- BMSU_names[seq(1,length(BMSU_names),2)]
+
+BMSU_years <- unique(substr(names(BMSU_vec),11,14))
+count_years <- as.data.frame(substr(names(BMSU_vec),11,14))
+
+BMSU_centroidL <- list()
+BMSU_centroidLn <- list()
+
+for(i in 1:length(BMSU_vec)){
+      tempv <- BMSU_vec[[i]]
+      BMSU_centroidL[[i]] <- centroids(tempv)
+      crs(BMSU_centroidL[[i]]) <- "EPSG:26910"
+      BMSU_centroidLn[i] <- paste0(BMSU_names[i],"_",count_years[i,1],"_centroid")
+      }
+
+names(BMSU_centroidL) <- unlist(BMSU_centroidLn)
+
+## Calculate the centroid of the aggregated union of animals by year:
+
+BMSU_Uvec <- list()
+BMSUagg_centroidL <- list()
+BMSUagg_centroidLn <- list()
+
+for(i in 1:length(BMSU_years)){
+  cond <- BMSU_vec[which(substr(names(BMSU_vec),11,14) == BMSU_years[i])]
+  BMSU_Uvec[i] <- aggregate(vect(svc(cond)))
+  BMSUagg_centroidL[i] <- centroids(BMSU_Uvec[[i]])
+  crs(BMSUagg_centroidL[[i]]) <- "EPSG:26910"
+  BMSUagg_centroidLn[i] <- paste0("BMSU_cent_",BMSU_years[i])
+}
+
+names(BMSUagg_centroidL) <- unlist(BMSUagg_centroidLn)
+
+# Rutting
+## Calculate the centroids of each animal 50% BRB in each year in BMRU:
+# First, get the vector of the animal names:
+BMRU_names <- substr(names(BMRU_vec),16,30)
+BMRU_names <- strsplit(BMRU_names, "_")
+BMRU_names <- unlist(BMRU_names)
+BMRU_names <- BMRU_names[seq(1,length(BMRU_names),2)]
+
+BMRU_years <- unique(substr(names(BMRU_vec),11,14))
+count_years <- as.data.frame(substr(names(BMRU_vec),11,14))
+
+BMRU_centroidL <- list()
+BMRU_centroidLn <- list()
+
+for(i in 1:length(BMRU_vec)){
+      tempv <- BMRU_vec[[i]]
+      BMRU_centroidL[[i]] <- centroids(tempv)
+      crs(BMRU_centroidL[[i]]) <- "EPSG:26910"
+      BMRU_centroidLn[i] <- paste0(BMRU_names[i],"_",count_years[i,1],"_centroid")
+      }
+
+names(BMRU_centroidL) <- unlist(BMRU_centroidLn)
+
+## Calculate the centroid of the aggregated union of animals by year:
+
+BMRU_Uvec <- list()
+BMRUagg_centroidL <- list()
+BMRUagg_centroidLn <- list()
+
+for(i in 1:length(BMRU_years)){
+  cond <- BMRU_vec[which(substr(names(BMRU_vec),11,14) == BMRU_years[i])]
+  BMRU_Uvec[i] <- aggregate(vect(svc(cond)))
+  BMRUagg_centroidL[i] <- centroids(BMRU_Uvec[[i]])
+  crs(BMRUagg_centroidL[[i]]) <- "EPSG:26910"
+  BMRUagg_centroidLn[i] <- paste0("BMRU_cent_",BMRU_years[i])
+}
+
+names(BMRUagg_centroidL) <- unlist(BMRUagg_centroidLn)
+
+
+```
+
+# Trend Roman Individual Centroids
+
+This code chunk calculates the centroid of the 50% BRB homerange estimated for each individual within years and seasons. These centroids are subsequently used to calculate the individual BRB centroid distance to the aggregate centroid, by season and by year.
+
+```{r , echo=FALSE, include = FALSE, message = FALSE, warning = FALSE, results = 'hide', fig.show = 'hide'}
+
+# Winter
+
+## Calculate the centroids of each animal 50% BRB in each year in TRWI:
+# First, get the vector of the animal names:
+TRWI_names <- substr(names(TRWI_vec),16,30)
+TRWI_names <- strsplit(TRWI_names, "_")
+TRWI_names <- unlist(TRWI_names)
+TRWI_names <- TRWI_names[seq(1,length(TRWI_names),2)]
+
+TRWI_years <- unique(substr(names(TRWI_vec),11,14))
+count_years <- as.data.frame(substr(names(TRWI_vec),11,14))
+
+TRWI_centroidL <- list()
+TRWI_centroidLn <- list()
+
+for(i in 1:length(TRWI_vec)){
+      tempv <- TRWI_vec[[i]]
+      TRWI_centroidL[[i]] <- centroids(tempv)
+      crs(TRWI_centroidL[[i]]) <- "EPSG:26910"
+      TRWI_centroidLn[i] <- paste0(TRWI_names[i],"_",count_years[i,1],"_centroid")
+      }
+
+names(TRWI_centroidL) <- unlist(TRWI_centroidLn)
+
+## Calculate the centroid of the aggregated union of animals by year:
+
+TRWI_Uvec <- list()
+TRWIagg_centroidL <- list()
+TRWIagg_centroidLn <- list()
+
+for(i in 1:length(TRWI_years)){
+  cond <- TRWI_vec[which(substr(names(TRWI_vec),11,14) == TRWI_years[i])]
+  TRWI_Uvec[i] <- aggregate(vect(svc(cond)))
+  TRWIagg_centroidL[i] <- centroids(TRWI_Uvec[[i]])
+  crs(TRWIagg_centroidL[[i]]) <- "EPSG:26910"
+  TRWIagg_centroidLn[i] <- paste0("TRWI_cent_",TRWI_years[i])
+}
+
+names(TRWIagg_centroidL) <- unlist(TRWIagg_centroidLn)
+
+# Calving
+
+## Calculate the centroids of each animal in each year in TRCA:
+# First, get the vector of the animal names:
+TRCA_names <- substr(names(TRCA_vec),16,30)
+TRCA_names <- strsplit(TRCA_names, "_")
+TRCA_names <- unlist(TRCA_names)
+TRCA_names <- TRCA_names[seq(1,length(TRCA_names),2)]
+
+TRCA_years <- unique(substr(names(TRCA_vec),11,14))
+count_years <- as.data.frame(substr(names(TRCA_vec),11,14))
+
+TRCA_centroidL <- list()
+TRCA_centroidLn <- list()
+
+for(i in 1:length(TRCA_vec)){
+      tempv <- TRCA_vec[[i]]
+      TRCA_centroidL[[i]] <- centroids(tempv)
+      crs(TRCA_centroidL[[i]]) <- "EPSG:26910"
+      TRCA_centroidLn[i] <- paste0(TRCA_names[i],"_",count_years[i,1],"_centroid")
+      }
+
+names(TRCA_centroidL) <- unlist(TRCA_centroidLn)
+
+## Calculate the centroid of the aggregated union of animals by year:
+
+TRCA_Uvec <- list()
+TRCAagg_centroidL <- list()
+TRCAagg_centroidLn <- list()
+
+for(i in 1:length(TRCA_years)){
+  cond <- TRCA_vec[which(substr(names(TRCA_vec),11,14) == TRCA_years[i])]
+  TRCA_Uvec[i] <- aggregate(vect(svc(cond)))
+  TRCAagg_centroidL[i] <- centroids(TRCA_Uvec[[i]])
+  crs(TRCAagg_centroidL[[i]]) <- "EPSG:26910"
+  TRCAagg_centroidLn[i] <- paste0("TRCA_cent_",TRCA_years[i])
+}
+
+names(TRCAagg_centroidL) <- unlist(TRCAagg_centroidLn)
+
+# Summer
+## Calculate the centroids of each animal 50% BRB in each year in TRSU:
+# First, get the vector of the animal names:
+TRSU_names <- substr(names(TRSU_vec),16,30)
+TRSU_names <- strsplit(TRSU_names, "_")
+TRSU_names <- unlist(TRSU_names)
+TRSU_names <- TRSU_names[seq(1,length(TRSU_names),2)]
+
+TRSU_years <- unique(substr(names(TRSU_vec),11,14))
+count_years <- as.data.frame(substr(names(TRSU_vec),11,14))
+
+TRSU_centroidL <- list()
+TRSU_centroidLn <- list()
+
+for(i in 1:length(TRSU_vec)){
+      tempv <- TRSU_vec[[i]]
+      TRSU_centroidL[[i]] <- centroids(tempv)
+      crs(TRSU_centroidL[[i]]) <- "EPSG:26910"
+      TRSU_centroidLn[i] <- paste0(TRSU_names[i],"_",count_years[i,1],"_centroid")
+      }
+
+names(TRSU_centroidL) <- unlist(TRSU_centroidLn)
+
+## Calculate the centroid of the aggregated union of animals by year:
+
+TRSU_Uvec <- list()
+TRSUagg_centroidL <- list()
+TRSUagg_centroidLn <- list()
+
+for(i in 1:length(TRSU_years)){
+  cond <- TRSU_vec[which(substr(names(TRSU_vec),11,14) == TRSU_years[i])]
+  TRSU_Uvec[i] <- aggregate(vect(svc(cond)))
+  TRSUagg_centroidL[i] <- centroids(TRSU_Uvec[[i]])
+  crs(TRSUagg_centroidL[[i]]) <- "EPSG:26910"
+  TRSUagg_centroidLn[i] <- paste0("TRSU_cent_",TRSU_years[i])
+}
+
+names(TRSUagg_centroidL) <- unlist(TRSUagg_centroidLn)
+
+# Rutting
+## Calculate the centroids of each animal 50% BRB in each year in TRRU:
+# First, get the vector of the animal names:
+TRRU_names <- substr(names(TRRU_vec),16,30)
+TRRU_names <- strsplit(TRRU_names, "_")
+TRRU_names <- unlist(TRRU_names)
+TRRU_names <- TRRU_names[seq(1,length(TRRU_names),2)]
+
+TRRU_years <- unique(substr(names(TRRU_vec),11,14))
+count_years <- as.data.frame(substr(names(TRRU_vec),11,14))
+
+TRRU_centroidL <- list()
+TRRU_centroidLn <- list()
+
+for(i in 1:length(TRRU_vec)){
+      tempv <- TRRU_vec[[i]]
+      TRRU_centroidL[[i]] <- centroids(tempv)
+      crs(TRRU_centroidL[[i]]) <- "EPSG:26910"
+      TRRU_centroidLn[i] <- paste0(TRRU_names[i],"_",count_years[i,1],"_centroid")
+      }
+
+names(TRRU_centroidL) <- unlist(TRRU_centroidLn)
+
+## Calculate the centroid of the aggregated union of animals by year:
+
+TRRU_Uvec <- list()
+TRRUagg_centroidL <- list()
+TRRUagg_centroidLn <- list()
+
+for(i in 1:length(TRRU_years)){
+  cond <- TRRU_vec[which(substr(names(TRRU_vec),11,14) == TRRU_years[i])]
+  TRRU_Uvec[i] <- aggregate(vect(svc(cond)))
+  TRRUagg_centroidL[i] <- centroids(TRRU_Uvec[[i]])
+  crs(TRRUagg_centroidL[[i]]) <- "EPSG:26910"
+  TRRUagg_centroidLn[i] <- paste0("TRRU_cent_",TRRU_years[i])
+}
+
+names(TRRUagg_centroidL) <- unlist(TRRUagg_centroidLn)
+
 ```
 
 ## Distance calculation - Simple linear "as the crow flies"
 
-Simple Euclidean linear distances are calculated here for winter data only. Winter BRB centroids are used to calculate aggregate centroid distances. TRBRB_centroidL is the BRB-UD, TRcentroidL is the aggregrate UD - subsetted by winter TRWI_Centroids and then by matching year of the BRB data into WIYR_Centroid.
+Simple Euclidean linear distances are calculated here for winter data only. Seasonal BRB centroids are used to calculate aggregate centroid distances. For winter, TRWI_centroidL is the BRB-UD and TRWIagg_centroidL is the aggregrate UD. Note that we were unable to calculate BRB-UDs for every animal due to computational memory issues in the parallel processing. However, the majority of the animals were successfully  processed and these formed the subset of the analysis used here.
 
 ```{r echo=FALSE}
 
+## I want to calculate the sum of the distances of all the individual animals to the centroid of the aggregate.
+
+#TRWI
+TRWI_ldst <- data.frame()
+
+for(i in 1:length(TRWI_centroidL)){
+  YR = substr(substring(names(TRWI_centroidL[i]),
+                        regexpr("_(\\d){4,4}",
+                                names(TRWI_centroidL[i]))),2,5)
+  TRWI_ldst[i,c(1:5)] <- cbind(
+                      terra::distance(TRWI_centroidL[[i]],
+                      vect(TRWIagg_centroidL[substr(names(TRWIagg_centroidL),
+                                                      11,15) == YR]), unit="m"),
+                      strsplit(names(TRWI_centroidL[i]),"_")[[1]][1],
+                      "TR",
+                      "WI",
+                      YR
+                      #str_extract(TRWI_centroidL[i], paste0(pattern = "\\d\\d\\d\\d", collapse="|"))
+    )
+}
+
+names(TRWI_ldst) <- c("Dst_m","AnimalID","SA","season","YearSeas")
+
+# The problem is that distance does not account for effort.
+# Correct for effort by dividing by telemetry timestamp hits.
+Caribou_BMTR <- read.csv(paste0(here("Input Data"), "/Caribou_noclip.csv"))
+Caribou_BM <- Caribou_BMTR[which(Caribou_BMTR$SA == "BM"),]
+Caribou_TR <- Caribou_BMTR[which(Caribou_BMTR$SA == "TR"),]
+
+Caribou_TRWI <- Caribou_TR[which(Caribou_TR$season == "EW" | Caribou_TR$season == "MW" | Caribou_TR$season == "LW"),]
+
+# This will not work, because some BRB's did not compute:
+#TRWI_ldst$Count <-  with(Caribou_TRWI, table(factor(paste(AnimalID, YearSeas),
+#        levels = unique(TRWI_ldst$AnimalID, TRWI_ldst$YearSeas))))
+
+# Visualize the failures based on frequency:
+noBRB <- setdiff(unique(Caribou_TRWI$AnimalID),unique(TRWI_ldst$AnimalID))
+
+r <- as.data.frame(with(Caribou_TRWI, table(AnimalID)))
+r <- r[with(r, order(Freq)), ]
+barplot(r$Freq, ylab='Freq', names=r$AnimalID, xlab='AnimalID', main='Hits',las=2, cex.names=0.6)
+# Two unusual things that might explain
+# the reason for computation challenge:
+# car036 has greatest timestamp freq
+# car037 has VERY wide geographic spread
+
+Caribou_TRWI <- Caribou_TRWI[ ! Caribou_TRWI$AnimalID %in% noBRB, ]
+
+TRWI_Cnts <- with(Caribou_TRWI, table(AnimalID,YearSeas))
+TRWI_Cnts_long <- as.data.frame(TRWI_Cnts)
+# Set the 5 Freq requirement:
+TRWI_Cnts_long <- TRWI_Cnts_long[which(TRWI_Cnts_long$Freq > 5),]
+TRWI_ldst$YearSeas <- as.factor(TRWI_ldst$YearSeas)
+TRWI_ldst$Dst_m <- as.numeric(TRWI_ldst$Dst_m )
+TRWI_Cnts_long$Freq <- as.numeric(TRWI_Cnts_long$Freq)
+TRWI_Cnts_long$AnimalID <- as.character(TRWI_Cnts_long$AnimalID)
+
+TRWI_ldst <- within(merge(TRWI_ldst, TRWI_Cnts_long), { Dst_m_WF = signif(Dst_m / Freq,3)})
+
+#TRCA
+TRCA_ldst <- data.frame()
+
+for(i in 1:length(TRCA_centroidL)){
+  YR = substr(substring(names(TRCA_centroidL[i]),
+                        regexpr("_(\\d){4,4}",
+                                names(TRCA_centroidL[i]))),2,5)
+  TRCA_ldst[i,c(1:5)] <- cbind(
+                      terra::distance(TRCA_centroidL[[i]],
+                      vect(TRCAagg_centroidL[substr(names(TRCAagg_centroidL),
+                                                      11,15) == YR]), unit="m"),
+                      strsplit(names(TRCA_centroidL[i]),"_")[[1]][1],
+                      "TR",
+                      "CA",
+                      YR
+                      #str_extract(TRCA_centroidL[i], paste0(pattern = "\\d\\d\\d\\d", collapse="|"))
+    )
+}
+
+names(TRCA_ldst) <- c("Dst_m","AnimalID","SA","season","YearSeas")
+
+# The problem is that distance does not account for effort.
+# Correct for effort by dividing by telemetry timestamp hits.
+Caribou_BMTR <- read.csv(paste0(here("Input Data"), "/Caribou_noclip.csv"))
+Caribou_BM <- Caribou_BMTR[which(Caribou_BMTR$SA == "BM"),]
+Caribou_TR <- Caribou_BMTR[which(Caribou_BMTR$SA == "TR"),]
+
+Caribou_TRCA <- Caribou_TR[which(Caribou_TR$season == "CA"),]
+
+# This will not work, because some BRB's did not compute:
+#TRCA_ldst$Count <-  with(Caribou_TRCA, table(factor(paste(AnimalID, YearSeas),
+#        levels = unique(TRCA_ldst$AnimalID, TRCA_ldst$YearSeas))))
+
+# Visualize the failures based on frequency:
+noBRB <- setdiff(unique(Caribou_TRCA$AnimalID),unique(TRCA_ldst$AnimalID))
+
+r <- as.data.frame(with(Caribou_TRCA, table(AnimalID)))
+r <- r[with(r, order(Freq)), ]
+barplot(r$Freq, ylab='Freq', names=r$AnimalID, xlab='AnimalID', main='Hits',las=2, cex.names=0.6)
+# Two unusual things that might explain
+# the reason for computation challenge:
+# car036 has greatest timestamp freq
+# car037 has VERY wide geographic spread
+
+Caribou_TRCA <- Caribou_TRCA[ ! Caribou_TRCA$AnimalID %in% noBRB, ]
+
+TRCA_Cnts <- with(Caribou_TRCA, table(AnimalID,YearSeas))
+TRCA_Cnts_long <- as.data.frame(TRCA_Cnts)
+# Set the 5 Freq requirement:
+TRCA_Cnts_long <- TRCA_Cnts_long[which(TRCA_Cnts_long$Freq > 5),]
+TRCA_ldst$YearSeas <- as.factor(TRCA_ldst$YearSeas)
+TRCA_ldst$Dst_m <- as.numeric(TRCA_ldst$Dst_m )
+TRCA_Cnts_long$Freq <- as.numeric(TRCA_Cnts_long$Freq)
+TRCA_Cnts_long$AnimalID <- as.character(TRCA_Cnts_long$AnimalID)
+
+TRCA_ldst <- within(merge(TRCA_ldst, TRCA_Cnts_long), { Dst_m_WF = signif(Dst_m / Freq,3)})
+
+#TRSU
+TRSU_ldst <- data.frame()
+
+
+for(i in 1:length(TRSU_centroidL)){
+  YR = substr(substring(names(TRSU_centroidL[i]),
+                        regexpr("_(\\d){4,4}",
+                                names(TRSU_centroidL[i]))),2,5)
+  TRSU_ldst[i,c(1:5)] <- cbind(
+                      terra::distance(TRSU_centroidL[[i]],
+                      vect(TRSUagg_centroidL[substr(names(TRSUagg_centroidL),
+                                                      11,15) == YR]), unit="m"),
+                      strsplit(names(TRSU_centroidL[i]),"_")[[1]][1],
+                      "TR",
+                      "SU",
+                      YR
+                      #str_extract(TRSU_centroidL[i], paste0(pattern = "\\d\\d\\d\\d", collapse="|"))
+    )
+}
+names(TRSU_ldst) <- c("Dst_m","AnimalID","SA","season","YearSeas")
+
+# The problem is that distance does not account for effort.
+# Correct for effort by dividing by telemetry timestamp hits.
+Caribou_BMTR <- read.csv(paste0(here("Input Data"), "/Caribou_noclip.csv"))
+Caribou_BM <- Caribou_BMTR[which(Caribou_BMTR$SA == "BM"),]
+Caribou_TR <- Caribou_BMTR[which(Caribou_BMTR$SA == "TR"),]
+
+Caribou_TRSU <- Caribou_TR[which(Caribou_TR$season == "SU"),]
+
+# This will not work, because some BRB's did not compute:
+#TRSU_ldst$Count <-  with(Caribou_TRSU, table(factor(paste(AnimalID, YearSeas),
+#        levels = unique(TRSU_ldst$AnimalID, TRSU_ldst$YearSeas))))
+
+# Visualize the failures based on frequency:
+noBRB <- setdiff(unique(Caribou_TRSU$AnimalID),unique(TRSU_ldst$AnimalID))
+
+r <- as.data.frame(with(Caribou_TRSU, table(AnimalID)))
+r <- r[with(r, order(Freq)), ]
+barplot(r$Freq, ylab='Freq', names=r$AnimalID, xlab='AnimalID', main='Hits',las=2, cex.names=0.6)
+# Two unusual things that might explain
+# the reason for computation challenge:
+# car036 has greatest timestamp freq
+# car037 has VERY wide geographic spread
+
+Caribou_TRSU <- Caribou_TRSU[ ! Caribou_TRSU$AnimalID %in% noBRB, ]
+
+TRSU_Cnts <- with(Caribou_TRSU, table(AnimalID,YearSeas))
+TRSU_Cnts_long <- as.data.frame(TRSU_Cnts)
+# Set the 5 Freq requirement:
+TRSU_Cnts_long <- TRSU_Cnts_long[which(TRSU_Cnts_long$Freq > 5),]
+TRSU_ldst$YearSeas <- as.factor(TRSU_ldst$YearSeas)
+TRSU_ldst$Dst_m <- as.numeric(TRSU_ldst$Dst_m )
+TRSU_Cnts_long$Freq <- as.numeric(TRSU_Cnts_long$Freq)
+TRSU_Cnts_long$AnimalID <- as.character(TRSU_Cnts_long$AnimalID)
+
+TRSU_ldst <- within(merge(TRSU_ldst, TRSU_Cnts_long), { Dst_m_WF = signif(Dst_m / Freq,3)})
+
+#TRRU
+TRRU_ldst <- data.frame()
+
+for(i in 1:length(TRRU_centroidL)){
+  YR = substr(substring(names(TRRU_centroidL[i]),
+                        regexpr("_(\\d){4,4}",
+                                names(TRRU_centroidL[i]))),2,5)
+  TRRU_ldst[i,c(1:5)] <- cbind(
+                      terra::distance(TRRU_centroidL[[i]],
+                      vect(TRRUagg_centroidL[substr(names(TRRUagg_centroidL),
+                                                      11,15) == YR]), unit="m"),
+                      strsplit(names(TRRU_centroidL[i]),"_")[[1]][1],
+                      "TR",
+                      "RU",
+                      YR
+                      #str_extract(TRRU_centroidL[i], paste0(pattern = "\\d\\d\\d\\d", collapse="|"))
+    )
+}
+names(TRRU_ldst) <- c("Dst_m","AnimalID","SA","season","YearSeas")
+
+# The problem is that distance does not account for effort.
+# Correct for effort by dividing by telemetry timestamp hits.
+Caribou_BMTR <- read.csv(paste0(here("Input Data"), "/Caribou_noclip.csv"))
+Caribou_BM <- Caribou_BMTR[which(Caribou_BMTR$SA == "BM"),]
+Caribou_TR <- Caribou_BMTR[which(Caribou_BMTR$SA == "TR"),]
+
+Caribou_TRRU <- Caribou_TR[which(Caribou_TR$season == "RU"),]
+
+# This will not work, because some BRB's did not compute:
+#TRRU_ldst$Count <-  with(Caribou_TRRU, table(factor(paste(AnimalID, YearSeas),
+#        levels = unique(TRRU_ldst$AnimalID, TRRU_ldst$YearSeas))))
+
+# Visualize the failures based on frequency:
+noBRB <- setdiff(unique(Caribou_TRRU$AnimalID),unique(TRRU_ldst$AnimalID))
+
+r <- as.data.frame(with(Caribou_TRRU, table(AnimalID)))
+r <- r[with(r, order(Freq)), ]
+barplot(r$Freq, ylab='Freq', names=r$AnimalID, xlab='AnimalID', main='Hits',las=2, cex.names=0.6)
+# Two unusual things that might explain
+# the reason for computation challenge:
+# car036 has greatest timestamp freq
+# car037 has VERY wide geographic spread
+
+Caribou_TRRU <- Caribou_TRRU[ ! Caribou_TRRU$AnimalID %in% noBRB, ]
+
+TRRU_Cnts <- with(Caribou_TRRU, table(AnimalID,YearSeas))
+TRRU_Cnts_long <- as.data.frame(TRRU_Cnts)
+# Set the 5 Freq requirement:
+TRRU_Cnts_long <- TRRU_Cnts_long[which(TRRU_Cnts_long$Freq > 5),]
+TRRU_ldst$YearSeas <- as.factor(TRRU_ldst$YearSeas)
+TRRU_ldst$Dst_m <- as.numeric(TRRU_ldst$Dst_m )
+TRRU_Cnts_long$Freq <- as.numeric(TRRU_Cnts_long$Freq)
+TRRU_Cnts_long$AnimalID <- as.character(TRRU_Cnts_long$AnimalID)
+
+TRRU_ldst <- within(merge(TRRU_ldst, TRRU_Cnts_long), { Dst_m_WF = signif(Dst_m / Freq,3)})
+
+## Bullmoose
+
+#BMWI
+BMWI_ldst <- data.frame()
+
+for(i in 1:length(BMWI_centroidL)){
+  YR = substr(substring(names(BMWI_centroidL[i]),
+                        regexpr("_(\\d){4,4}",
+                                names(BMWI_centroidL[i]))),2,5)
+  BMWI_ldst[i,c(1:5)] <- cbind(
+                      terra::distance(BMWI_centroidL[[i]],
+                      vect(BMWIagg_centroidL[substr(names(BMWIagg_centroidL),
+                                                      11,15) == YR]), unit="m"),
+                      strsplit(names(BMWI_centroidL[i]),"_")[[1]][1],
+                      "BM",
+                      "WI",
+                      YR
+                      #str_extract(BMWI_centroidL[i], paste0(pattern = "\\d\\d\\d\\d", collapse="|"))
+    )
+}
+
+names(BMWI_ldst) <- c("Dst_m","AnimalID","SA","season","YearSeas")
+
+# The problem is that distance does not account for effort.
+# Correct for effort by dividing by telemetry timestamp hits.
+Caribou_BMTR <- read.csv(paste0(here("Input Data"), "/Caribou_noclip.csv"))
+Caribou_BM <- Caribou_BMTR[which(Caribou_BMTR$SA == "BM"),]
+Caribou_TR <- Caribou_BMTR[which(Caribou_BMTR$SA == "TR"),]
+
+Caribou_BMWI <- Caribou_BM[which(Caribou_BM$season == "EW" | Caribou_BM$season == "MW" | Caribou_BM$season == "LW"),]
+
+# This will not work, because some BRB's did not compute:
+#BMWI_ldst$Count <-  with(Caribou_BMWI, table(factor(paste(AnimalID, YearSeas),
+#        levels = unique(BMWI_ldst$AnimalID, BMWI_ldst$YearSeas))))
+
+# Visualize the failures based on frequency:
+noBRB <- setdiff(unique(Caribou_BMWI$AnimalID),unique(BMWI_ldst$AnimalID))
+
+r <- as.data.frame(with(Caribou_BMWI, table(AnimalID)))
+r <- r[with(r, order(Freq)), ]
+barplot(r$Freq, ylab='Freq', names=r$AnimalID, xlab='AnimalID', main='Hits',las=2, cex.names=0.6)
+# Two unusual things that might explain
+# the reason for computation challenge:
+# car036 has greatest timestamp freq
+# car037 has VERY wide geographic spread
+
+Caribou_BMWI <- Caribou_BMWI[ ! Caribou_BMWI$AnimalID %in% noBRB, ]
+
+BMWI_Cnts <- with(Caribou_BMWI, table(AnimalID,YearSeas))
+BMWI_Cnts_long <- as.data.frame(BMWI_Cnts)
+# Set the 5 Freq requirement:
+BMWI_Cnts_long <- BMWI_Cnts_long[which(BMWI_Cnts_long$Freq > 5),]
+BMWI_ldst$YearSeas <- as.factor(BMWI_ldst$YearSeas)
+BMWI_ldst$Dst_m <- as.numeric(BMWI_ldst$Dst_m )
+BMWI_Cnts_long$Freq <- as.numeric(BMWI_Cnts_long$Freq)
+BMWI_Cnts_long$AnimalID <- as.character(BMWI_Cnts_long$AnimalID)
+
+BMWI_ldst <- within(merge(BMWI_ldst, BMWI_Cnts_long), { Dst_m_WF = signif(Dst_m / Freq,3)})
+
+#BMCA
+BMCA_ldst <- data.frame()
+
+for(i in 1:length(BMCA_centroidL)){
+  YR = substr(substring(names(BMCA_centroidL[i]),
+                        regexpr("_(\\d){4,4}",
+                                names(BMCA_centroidL[i]))),2,5)
+  BMCA_ldst[i,c(1:5)] <- cbind(
+                      terra::distance(BMCA_centroidL[[i]],
+                      vect(BMCAagg_centroidL[substr(names(BMCAagg_centroidL),
+                                                      11,15) == YR]), unit="m"),
+                      strsplit(names(BMCA_centroidL[i]),"_")[[1]][1],
+                      "BM",
+                      "CA",
+                      YR
+                      #str_extract(BMCA_centroidL[i], paste0(pattern = "\\d\\d\\d\\d", collapse="|"))
+    )
+}
+
+names(BMCA_ldst) <- c("Dst_m","AnimalID","SA","season","YearSeas")
+
+# The problem is that distance does not account for effort.
+# Correct for effort by dividing by telemetry timestamp hits.
+Caribou_BMTR <- read.csv(paste0(here("Input Data"), "/Caribou_noclip.csv"))
+Caribou_BM <- Caribou_BMTR[which(Caribou_BMTR$SA == "BM"),]
+Caribou_TR <- Caribou_BMTR[which(Caribou_BMTR$SA == "TR"),]
+
+Caribou_BMCA <- Caribou_BM[which(Caribou_BM$season == "CA"),]
+
+# This will not work, because some BRB's did not compute:
+#BMCA_ldst$Count <-  with(Caribou_BMCA, table(factor(paste(AnimalID, YearSeas),
+#        levels = unique(BMCA_ldst$AnimalID, BMCA_ldst$YearSeas))))
+
+# Visualize the failures based on frequency:
+noBRB <- setdiff(unique(Caribou_BMCA$AnimalID),unique(BMCA_ldst$AnimalID))
+
+r <- as.data.frame(with(Caribou_BMCA, table(AnimalID)))
+r <- r[with(r, order(Freq)), ]
+barplot(r$Freq, ylab='Freq', names=r$AnimalID, xlab='AnimalID', main='Hits',las=2, cex.names=0.6)
+# Two unusual things that might explain
+# the reason for computation challenge:
+# car036 has greatest timestamp freq
+# car037 has VERY wide geographic spread
+
+Caribou_BMCA <- Caribou_BMCA[ ! Caribou_BMCA$AnimalID %in% noBRB, ]
+
+BMCA_Cnts <- with(Caribou_BMCA, table(AnimalID,YearSeas))
+BMCA_Cnts_long <- as.data.frame(BMCA_Cnts)
+# Set the 5 Freq requirement:
+BMCA_Cnts_long <- BMCA_Cnts_long[which(BMCA_Cnts_long$Freq > 5),]
+BMCA_ldst$YearSeas <- as.factor(BMCA_ldst$YearSeas)
+BMCA_ldst$Dst_m <- as.numeric(BMCA_ldst$Dst_m )
+BMCA_Cnts_long$Freq <- as.numeric(BMCA_Cnts_long$Freq)
+BMCA_Cnts_long$AnimalID <- as.character(BMCA_Cnts_long$AnimalID)
+
+BMCA_ldst <- within(merge(BMCA_ldst, BMCA_Cnts_long), { Dst_m_WF = signif(Dst_m / Freq,3)})
+
+#BMSU
+BMSU_ldst <- data.frame()
+
+for(i in 1:length(BMSU_centroidL)){
+  YR = substr(substring(names(BMSU_centroidL[i]),
+                        regexpr("_(\\d){4,4}",
+                                names(BMSU_centroidL[i]))),2,5)
+  BMSU_ldst[i,c(1:5)] <- cbind(
+                      terra::distance(BMSU_centroidL[[i]],
+                      vect(BMSUagg_centroidL[substr(names(BMSUagg_centroidL),
+                                                      11,15) == YR]), unit="m"),
+                      strsplit(names(BMSU_centroidL[i]),"_")[[1]][1],
+                      "BM",
+                      "SU",
+                      YR
+                      #str_extract(BMSU_centroidL[i], paste0(pattern = "\\d\\d\\d\\d", collapse="|"))
+    )
+}
+names(BMSU_ldst) <- c("Dst_m","AnimalID","SA","season","YearSeas")
+
+# The problem is that distance does not account for effort.
+# Correct for effort by dividing by telemetry timestamp hits.
+Caribou_BMTR <- read.csv(paste0(here("Input Data"), "/Caribou_noclip.csv"))
+Caribou_BM <- Caribou_BMTR[which(Caribou_BMTR$SA == "BM"),]
+Caribou_TR <- Caribou_BMTR[which(Caribou_BMTR$SA == "TR"),]
+
+Caribou_BMSU <- Caribou_BM[which(Caribou_BM$season == "SU"),]
+
+# This will not work, because some BRB's did not compute:
+#BMSU_ldst$Count <-  with(Caribou_BMSU, table(factor(paste(AnimalID, YearSeas),
+#        levels = unique(BMSU_ldst$AnimalID, BMSU_ldst$YearSeas))))
+
+# Visualize the failures based on frequency:
+noBRB <- setdiff(unique(Caribou_BMSU$AnimalID),unique(BMSU_ldst$AnimalID))
+
+r <- as.data.frame(with(Caribou_BMSU, table(AnimalID)))
+r <- r[with(r, order(Freq)), ]
+barplot(r$Freq, ylab='Freq', names=r$AnimalID, xlab='AnimalID', main='Hits',las=2, cex.names=0.6)
+# Two unusual things that might explain
+# the reason for computation challenge:
+# car036 has greatest timestamp freq
+# car037 has VERY wide geographic spread
+
+Caribou_BMSU <- Caribou_BMSU[ ! Caribou_BMSU$AnimalID %in% noBRB, ]
+
+BMSU_Cnts <- with(Caribou_BMSU, table(AnimalID,YearSeas))
+BMSU_Cnts_long <- as.data.frame(BMSU_Cnts)
+# Set the 5 Freq requirement:
+BMSU_Cnts_long <- BMSU_Cnts_long[which(BMSU_Cnts_long$Freq > 5),]
+BMSU_ldst$YearSeas <- as.factor(BMSU_ldst$YearSeas)
+BMSU_ldst$Dst_m <- as.numeric(BMSU_ldst$Dst_m )
+BMSU_Cnts_long$Freq <- as.numeric(BMSU_Cnts_long$Freq)
+BMSU_Cnts_long$AnimalID <- as.character(BMSU_Cnts_long$AnimalID)
+
+BMSU_ldst <- within(merge(BMSU_ldst, BMSU_Cnts_long), { Dst_m_WF = signif(Dst_m / Freq,3)})
+
+#BMRU
+BMRU_ldst <- data.frame()
+
+for(i in 1:length(BMRU_centroidL)){
+  YR = substr(substring(names(BMRU_centroidL[i]),
+                        regexpr("_(\\d){4,4}",
+                                names(BMRU_centroidL[i]))),2,5)
+  BMRU_ldst[i,c(1:5)] <- cbind(
+                      terra::distance(BMRU_centroidL[[i]],
+                      vect(BMRUagg_centroidL[substr(names(BMRUagg_centroidL),
+                                                      11,15) == YR]), unit="m"),
+                      strsplit(names(BMRU_centroidL[i]),"_")[[1]][1],
+                      "BM",
+                      "RU",
+                      YR
+                      #str_extract(BMRU_centroidL[i], paste0(pattern = "\\d\\d\\d\\d", collapse="|"))
+    )
+}
+names(BMRU_ldst) <- c("Dst_m","AnimalID","SA","season","YearSeas")
+
+# The problem is that distance does not account for effort.
+# Correct for effort by dividing by telemetry timestamp hits.
+Caribou_BMTR <- read.csv(paste0(here("Input Data"), "/Caribou_noclip.csv"))
+Caribou_BM <- Caribou_BMTR[which(Caribou_BMTR$SA == "BM"),]
+Caribou_TR <- Caribou_BMTR[which(Caribou_BMTR$SA == "TR"),]
+
+Caribou_BMRU <- Caribou_BM[which(Caribou_BM$season == "RU"),]
+
+# This will not work, because some BRB's did not compute:
+#BMRU_ldst$Count <-  with(Caribou_BMRU, table(factor(paste(AnimalID, YearSeas),
+#        levels = unique(BMRU_ldst$AnimalID, BMRU_ldst$YearSeas))))
+
+# Visualize the failures based on frequency:
+noBRB <- setdiff(unique(Caribou_BMRU$AnimalID),unique(BMRU_ldst$AnimalID))
+
+r <- as.data.frame(with(Caribou_BMRU, table(AnimalID)))
+r <- r[with(r, order(Freq)), ]
+barplot(r$Freq, ylab='Freq', names=r$AnimalID, xlab='AnimalID', main='Hits',las=2, cex.names=0.6)
+# Two unusual things that might explain
+# the reason for computation challenge:
+# car036 has greatest timestamp freq
+# car037 has VERY wide geographic spread
+
+Caribou_BMRU <- Caribou_BMRU[ ! Caribou_BMRU$AnimalID %in% noBRB, ]
+
+BMRU_Cnts <- with(Caribou_BMRU, table(AnimalID,YearSeas))
+BMRU_Cnts_long <- as.data.frame(BMRU_Cnts)
+# Set the 5 Freq requirement:
+BMRU_Cnts_long <- BMRU_Cnts_long[which(BMRU_Cnts_long$Freq > 5),]
+BMRU_ldst$YearSeas <- as.factor(BMRU_ldst$YearSeas)
+BMRU_ldst$Dst_m <- as.numeric(BMRU_ldst$Dst_m )
+BMRU_Cnts_long$Freq <- as.numeric(BMRU_Cnts_long$Freq)
+BMRU_Cnts_long$AnimalID <- as.character(BMRU_Cnts_long$AnimalID)
+
+BMRU_ldst <- within(merge(BMRU_ldst, BMRU_Cnts_long), { Dst_m_WF = signif(Dst_m / Freq,3)})
+
+
+```
+
+# Trend Roman Centroid Distances: Winter
+
+```{r , echo=FALSE, include = FALSE, message = FALSE, warning = FALSE, results = 'hide', fig.show = 'hide'}
+
 ## Trend Roman
-# Subset to season (WI = Winter, CA = Calving, SU = Summer, RU = Rutting)
-TRWI_Centroids <- subset(TRcentroidL, subset = substr(names(TRcentroidL),3,4) == "WI")
-Years <- substr(names(TRBRB_centroidL),1,4)
+#TRWI_centroidL = 50% BRB
+# TRWIagg_centroidL = Aggregated
+
+TRWI_Centroids <- TRWIagg_centroidL
+Years <- substr(substring(names(TRWI_centroidL), regexpr("_(\\d){4}", names(TRWI_centroidL))),2,5)
 TRcdist <- data.frame()
 
-for(i in 1:length(TRBRB_centroidL)){
-    WIYR_Centroid <- subset(TRWI_Centroids, subset = substr(names(TRWI_Centroids),6,9) == Years[i])
-    dpoints <- rbind(c(as.numeric(st_coordinates(TRBRB_centroidL[[i]]))),as.numeric(st_coordinates(WIYR_Centroid[[1]])))
-    TRcdist[i,1] <- pointDistance(dpoints, lonlat=FALSE)[2,1]
-    TRcdist[i,2] <- names(TRBRB_centroidL[i])
+for(i in 1:length(TRWI_centroidL)){
+    WIYR_Centroid <- subset(TRWIagg_centroidL, subset = substr(names(TRWIagg_centroidL),11,14) == Years[i])
+TRcdist[i,c(1:2)] <- cbind(terra::distance(TRWI_centroidL[[i]],
+                                           WIYR_Centroid[[1]]),
+                           strsplit(names(TRWI_centroidL[i]),"_")[[1]][1])
 }
 
 TRcdist$Years <- Years
 
+## Confirmed that this is the same as previous:
+sort(TRWI_ldst$Dst_m) == sort(as.numeric(TRcdist$V1))
+
 ## Bullmoose
 
-# This loop calculates the distance, in call to the pointDistance() function,
-# between the aggregate centroids in a list (= BMcentroidL) and the centroids
-# of the individual animal BRB home ranges in the winter across years. A faster
-# code design would be use of apply() functions, but loops were used in the
-# initial phase of coding. The coding across this project is updated to
-# use parallel processing where the steps are  considerably slowed down by loops.
-
-BMWI_Centroids <- subset(BMcentroidL, subset = substr(names(BMcentroidL),3,4) == "WI")
-Years <- substr(names(BMBRB_centroidL),1,4)
+BMWI_Centroids <- BMWIagg_centroidL
+Years <- substr(substring(names(BMWI_centroidL), regexpr("_(\\d){4}", names(BMWI_centroidL))),2,5)
 BMcdist <- data.frame()
 
-for(i in 1:length(BMBRB_centroidL)){
-    WIYR_Centroid <- subset(BMWI_Centroids, subset = substr(names(BMWI_Centroids),6,9) == Years[i])
-    dpoints <- rbind(c(as.numeric(st_coordinates(BMBRB_centroidL[[i]]))),as.numeric(st_coordinates(WIYR_Centroid[[1]])))
-    BMcdist[i,1] <- pointDistance(dpoints, lonlat=FALSE)[2,1]
-    BMcdist[i,2] <- names(BMBRB_centroidL[i])
+for(i in 1:length(BMWI_centroidL)){
+    WIYR_Centroid <- subset(BMWIagg_centroidL, subset = substr(names(BMWIagg_centroidL),11,14) == Years[i])
+BMcdist[i,c(1:2)] <- cbind(terra::distance(BMWI_centroidL[[i]],
+                                           WIYR_Centroid[[1]]),
+                           strsplit(names(BMWI_centroidL[i]),"_")[[1]][1])
 }
 
 BMcdist$Years <- Years
+
+## Confirmed that this is the same as previous:
+sort(BMWI_ldst$Dst_m) == sort(as.numeric(BMcdist$V1))
+
 BMcdist$SA <- "BM"
 TRcdist$SA <- "TR"
 
@@ -225,9 +1031,6 @@ C2CL2 =  ggplot(C2CL_summary, aes(x = Year, y = mean, color = SA)) +
 
 #pointDistance(Distmat, lonlat=FALSE)
 
-
-            
-
 ```
 
 #Alos Polsar DEM - Movecost distance approach
@@ -255,22 +1058,124 @@ DEM <- terra::project(DEM, "EPSG:32610")
 
 ext_TR <- ext(c(585730, 674943, 6058932, 6110270))
 DEM_TR <- crop(DEM, ext_TR)
+writeRaster(DEM_TR,paste0(here("Spatial Data"),"/DEM_TR.tif"))
+DEM_TR <- rast(paste0(here("Spatial Data"),"/DEM_TR.tif"))
 
 DEM_TR_slope <- terrain(DEM_TR, v="slope", neighbors=8, filename=paste0(here("Spatial Data"),"/","Alos_Slope_TR.tif"), overwrite=TRUE)
-DEM_TR_slope <- raster(paste0(here("Spatial Data"),"/","Alos_Slope_TR.tif"))
+DEM_TR_slope <- rast(paste0(here("Spatial Data"),"/Alos_Slope_TR.tif"))
 
 DEM_TR_tr <- transition(DEM_TR_slope, median, 16, symm=FALSE) ## asymetric transition layer.
 saveRDS(DEM_TR_tr, paste0(here("Output Data"),"/DEM_TR_tr.rds"))
+DEM_TR_tr <- readRDS(paste0(here("Output Data"),"/DEM_TR_tr.rds"))
 
 DEM_DEM_TR_gctr <- geoCorrection(DEM_TR_tr, type="c")
+
+DEM_TR_CS <- leastcostpath::create_cs(DEM_TR, neighbours=16, dem=NULL, max_slope=NULL, exaggeration=FALSE )
+
+
+slope_cs <- create_slope_cs(x = DEM_TR,cost_function="tobler",neighbours=4)
 
 ## https://stackoverflow.com/questions/35347854/export-transition-layers-from-r
 saveRDS(DEM_DEM_TR_gctr, paste0(here("Spatial Data"),"/","DEM_DEM_TR_gctr.tif"))
 DEM_DEM_TR_gctr <- readRDS(paste0(here("Spatial Data"),"/","DEM_DEM_TR_gctr.tif"))
 
+###
+AtoB_TRWI <- list()
+
+#TRWI
+for(i in 1:length(TRWI_centroidL)){
+    WIYR_Centroid <- subset(TRWI_Centroids, subset = substr(names(TRWI_Centroids),11,14) == Years[i])
+    d1 <- WIYR_Centroid[[1]]
+    crs(d1) <- "EPSG:32610"
+    d1 <- terra::project(d1, "EPSG:32610")
+    d1 <- as(d1, "Spatial")
+    o1 <- TRWI_centroidL[[i]]
+    crs(o1) <- "EPSG:32610"
+    o1 <- terra::project(o1, "EPSG:32610")
+    o1 <- as(o1, "SpatialPoints")
+    #slope_cs<-create_slope_cs(x=DEM_DEM_TR_gctr,cost_function="tobler",neighbours=4)
+    if(ext(d1) == ext(o1)){
+      TRcdist[i,1] = 0
+      TRcdist[i,2] <- names(TRWI_centroidL[i])
+    }
+    else if(ext(d1) != ext(o1)){
+      AtoB_TRWI[i] <- create_lcp(cost_surface=DEM_DEM_TR_gctr,
+                                 origin=d1,
+                                 destination=o1)
+                                 TRcdist[i,1] <- rgeos::gLength(AtoB_TRWI[[i]])
+                                 TRcdist[i,2] <- names(TRWI_centroidL[i])
+   }
+    ## CURRENT TESTING
+}
+
+    d1 <- vect(WIYR_Centroid[[1]])
+    crs(d1) <- "EPSG:32610"
+    d1 <- terra::project(d1, "EPSG:32610")
+    d1 <- as(d1, "Spatial")
+    o1 <- vect(TRBRB_centroidL[[i]])
+    crs(o1) <- "EPSG:32610"
+    o1 <- terra::project(o1, "EPSG:32610")
+    o1 <- as(o1, "Spatial")
+    AtoB_TR[i] <- shortestPath(DEM_DEM_TR_gctr, o1, d1, output="SpatialLines")
+    TRcdist[i,1] <- rgeos::gLength(AtoB_TR[[i]])
+    TRcdist[i,2] <- names(TRBRB_centroidL[i])
+
+
+###################
+############
+#######
+#######
+
+
+names(TRWI_ldst) <- c("Dst_m","AnimalID","SA","season","YearSeas")
+
+# The problem is that distance does not account for effort.
+# Correct for effort by dividing by telemetry timestamp hits.
+Caribou_BMTR <- read.csv(paste0(here("Input Data"), "/Caribou_noclip.csv"))
+Caribou_BM <- Caribou_BMTR[which(Caribou_BMTR$SA == "BM"),]
+Caribou_TR <- Caribou_BMTR[which(Caribou_BMTR$SA == "TR"),]
+
+Caribou_TRWI <- Caribou_TR[which(Caribou_TR$season == "EW" | Caribou_TR$season == "MW" | Caribou_TR$season == "LW"),]
+
+# This will not work, because some BRB's did not compute:
+#TRWI_ldst$Count <-  with(Caribou_TRWI, table(factor(paste(AnimalID, YearSeas),
+#        levels = unique(TRWI_ldst$AnimalID, TRWI_ldst$YearSeas))))
+
+# Visualize the failures based on frequency:
+noBRB <- setdiff(unique(Caribou_TRWI$AnimalID),unique(TRWI_ldst$AnimalID))
+
+r <- as.data.frame(with(Caribou_TRWI, table(AnimalID)))
+r <- r[with(r, order(Freq)), ]
+barplot(r$Freq, ylab='Freq', names=r$AnimalID, xlab='AnimalID', main='Hits',las=2, cex.names=0.6)
+# Two unusual things that might explain
+# the reason for computation challenge:
+# car036 has greatest timestamp freq
+# car037 has VERY wide geographic spread
+
+Caribou_TRWI <- Caribou_TRWI[ ! Caribou_TRWI$AnimalID %in% noBRB, ]
+
+TRWI_Cnts <- with(Caribou_TRWI, table(AnimalID,YearSeas))
+TRWI_Cnts_long <- as.data.frame(TRWI_Cnts)
+# Set the 5 Freq requirement:
+TRWI_Cnts_long <- TRWI_Cnts_long[which(TRWI_Cnts_long$Freq > 5),]
+TRWI_ldst$YearSeas <- as.factor(TRWI_ldst$YearSeas)
+TRWI_ldst$Dst_m <- as.numeric(TRWI_ldst$Dst_m )
+TRWI_Cnts_long$Freq <- as.numeric(TRWI_Cnts_long$Freq)
+TRWI_Cnts_long$AnimalID <- as.character(TRWI_Cnts_long$AnimalID)
+
+TRWI_ldst <- within(merge(TRWI_ldst, TRWI_Cnts_long), { Dst_m_WF = signif(Dst_m / Freq,3)})
+
+
+###
+
+
+
 TRWI_Centroids <- subset(TRcentroidL, subset = substr(names(TRcentroidL),3,4) == "WI")
-Years <- substr(names(TRBRB_centroidL),1,4)
-Years <- Years[c(1:64)] # Year 2020 is not in this set, manually removing it here
+Years <- substr(substring(names(TRWI_centroidL), regexpr("_(\\d){4}", names(TRWI_centroidL))),2,5)
+
+Years2 <- substr(names(TRWI_Centroids),6,9)
+
+
 TRcdist <- data.frame()
 AtoB_TR <- list()
 
@@ -278,7 +1183,7 @@ AtoB_TR <- list()
 
 ## Issue starts with i = 37, 42 -> "Error in as.igraph.vs(graph, from) : Invalid vertex name(s)". The extent of the DEM did not fully cover the extent of the centroids, so an additional Alos Polsar tile was downloaded, merged, and cropped to cover the full extent.
 
-for(i in 1:length(TRBRB_centroidL)){
+for(i in 1:length(TRWI_centroidL)){
     WIYR_Centroid <- subset(TRWI_Centroids, subset = substr(names(TRWI_Centroids),6,9) == Years[i])
     d1 <- vect(WIYR_Centroid[[1]])
     crs(d1) <- "EPSG:32610"
